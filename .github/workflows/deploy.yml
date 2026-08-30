@@ -115,17 +115,17 @@ jobs:
           DEPLOYED_BACKEND_URL: ${{ needs.backend.outputs.url }}
         run: |
           test -n "$DEPLOYED_BACKEND_URL"
-          npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes "vercel@$VERCEL_CLI_VERSION" pull --cwd .. --yes --environment=production --token="$VERCEL_TOKEN"
           backend_ws_url="${DEPLOYED_BACKEND_URL/https:/wss:}"
           BACKEND_URL="$DEPLOYED_BACKEND_URL" \
           NEXT_PUBLIC_BACKEND_URL="$DEPLOYED_BACKEND_URL" \
           NEXT_PUBLIC_BACKEND_WS_URL="$backend_ws_url" \
-            npx --yes "vercel@$VERCEL_CLI_VERSION" build --prod --token="$VERCEL_TOKEN"
+            npx --yes "vercel@$VERCEL_CLI_VERSION" build --cwd .. --prod --token="$VERCEL_TOKEN"
       - name: Deploy the prebuilt frontend
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          deployment_url="$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          deployment_url="$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --cwd .. --prebuilt --prod --token="$VERCEL_TOKEN")"
           curl --fail --silent --show-error --location "$deployment_url/en" >/dev/null
