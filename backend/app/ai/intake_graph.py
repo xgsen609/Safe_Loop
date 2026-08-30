@@ -543,6 +543,53 @@ def _result_questions(data: dict[str, JsonValue]) -> list[IntakeQuestion]:
     return questions
 
 
+def _gap_tokens(value: str) -> set[str]:
+    """Reduce a model-authored gap label to stable matching terms."""
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.casefold())
+        if len(token) > 2
+    }
+
+
+def _questions_for_known_gaps(
+    questions: list[IntakeQuestion],
+    unresolved_gaps: list[str],
+    preferred_lang: str,
+) -> list[IntakeQuestion]:
+    """Bind model-authored question text only to server-known unresolved gaps."""
+    if len(questions) > MAX_QUESTIONS_PER_ROUND:
+        raise ValueError("composed questions exceeded the question cap")
+
+    remaining = list(dict.fromkeys(unresolved_gaps))
+    normalised: list[IntakeQuestion] = []
+    for question in questions:
+        if not remaining:
+            break
+        if question["gap"] in remaining:
+            selected = question["gap"]
+            text = question["text"]
+        else:
+            question_tokens = _gap_tokens(
+                f"{question['gap']} {question['text']}"
+            )
+            scores = [
+                len(question_tokens & _gap_tokens(candidate))
+                for candidate in remaining
+            ]
+            best_index = max(range(len(remaining)), key=scores.__getitem__)
+            selected = remaining[best_index]
+            text = question["text"]
+            if scores[best_index] == 0:
+                text = cast(
+                    str,
+                    _stub_questions([selected], preferred_lang, 1)[0]["text"],
+                )
+        remaining.remove(selected)
+        normalised.append({"gap": selected, "text": text})
+    return normalised
+
+
 def _result_draft(data: dict[str, JsonValue]) -> DraftPayload:
     result = DraftResult.model_validate(data)
     citations: list[DraftCitation] = [
@@ -646,14 +693,13 @@ async def compose_questions(state: IntakeState) -> dict[str, object]:
         schema=QuestionCompositionResult,
     )
     questions = _result_questions(result.data)
-    unresolved = set(state["missing_information"])
-    if len(questions) > MAX_QUESTIONS_PER_ROUND or any(
-        question["gap"] not in unresolved for question in questions
-    ):
-        raise ValueError("composed questions must map to unresolved gaps")
-    if len({question["gap"] for question in questions}) != len(questions):
-        raise ValueError("composed questions must address distinct gaps")
-    return {"questions": questions}
+    return {
+        "questions": _questions_for_known_gaps(
+            questions,
+            state["missing_information"],
+            state["preferred_lang"],
+        )
+    }
 
 
 async def retrieve(state: IntakeState) -> dict[str, object]:

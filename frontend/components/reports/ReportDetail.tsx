@@ -18,7 +18,7 @@ import {
   type ReportDetail as ReportDetailData,
   type TimelineEntry,
 } from "../../lib/reports";
-import type { ReportStatus } from "../../lib/stateMachine";
+import { reportStatus, type ReportStatus } from "../../lib/stateMachine";
 import { createClient } from "../../lib/supabase/browser";
 import { BottomNavigation } from "../navigation/BottomNavigation";
 import { useReporterNavigation } from "../navigation/useReporterNavigation";
@@ -139,6 +139,14 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
       active = false;
     };
   }, [load]);
+
+  useEffect(() => {
+    if (report?.status !== reportStatus.submitted) return;
+    const interval = window.setInterval(() => {
+      void load().catch(() => undefined);
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [load, report?.status]);
 
   async function applyTransition(transition: AvailableTransition) {
     setSubmitting(true);

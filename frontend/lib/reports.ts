@@ -366,6 +366,15 @@ export function transitionReport(
   );
 }
 
+export function retryReportIntake(
+  reportId: string,
+  accessToken: string,
+): Promise<{ report_id: string; status: ReportStatus }> {
+  return apiFetch(`/reports/${reportId}/intake/retry`, accessToken, {
+    method: "POST",
+  });
+}
+
 export function reviewReport(
   reportId: string,
   input: ReviewInput,

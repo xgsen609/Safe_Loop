@@ -860,6 +860,63 @@ async def post_transition(
     return cast(dict[str, object], jsonable_encoder(dict(report)))
 
 
+@router.post("/{report_id}/intake/retry")
+async def post_intake_retry(
+    report_id: UUID,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, str]:
+    """Retry a stranded intake while the request keeps the runtime active."""
+    report = await get_report(report_id)
+    if report is None:
+        raise HTTPException(
+            404,
+            {"code": "report_not_found", "message": "report does not exist"},
+        )
+    try:
+        assert_report_readable(report, actor)
+    except MediaError as error:
+        raise media_error(error) from error
+    if ReportStatus(report["status"]) is not ReportStatus.SUBMITTED:
+        raise HTTPException(
+            409,
+            {
+                "code": "intake_not_retryable",
+                "message": "report is not waiting for intake",
+            },
+        )
+    if actor.profile_id is None:
+        raise HTTPException(
+            403,
+            {"code": "profile_required", "message": "human profile is required"},
+        )
+    await enforce_rate_limit(
+        scope="intake_retry",
+        subject=str(actor.profile_id),
+        limit=get_settings().report_submission_rate_limit_per_minute,
+        error_code="intake_retry_rate_limited",
+    )
+
+    persisted = await run_intake(report_id, current_request_id())
+    refreshed = await get_report(report_id)
+    refreshed_status = (
+        ReportStatus(refreshed["status"])
+        if refreshed is not None
+        else ReportStatus.SUBMITTED
+    )
+    if not persisted and refreshed_status is ReportStatus.SUBMITTED:
+        raise HTTPException(
+            503,
+            {
+                "code": "intake_retry_failed",
+                "message": "AI intake could not complete",
+            },
+        )
+    return {
+        "report_id": str(report_id),
+        "status": refreshed_status.value,
+    }
+
+
 @router.post("/{report_id}/clarifications/{clarification_id}/answer")
 async def post_clarification_answer(
     report_id: UUID,

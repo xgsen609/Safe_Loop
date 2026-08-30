@@ -11,7 +11,8 @@ from typing import Literal, cast
 import pytest
 
 from app.ai import intake_graph as intake_module
-from app.ai.intake_graph import IntakeState, intake_graph, translate
+from app.ai.intake_graph import IntakeState, compose_questions, intake_graph, translate
+from app.ai.provider import ProviderResult
 from app.ai.validator import validate_draft
 from app.domain.enums import ValidationStatus
 
@@ -140,6 +141,47 @@ def test_questions_use_the_reporters_preferred_language() -> None:
         for question in questions
     )
     assert all(question["gap"] in result["missing_information"] for question in questions)
+
+
+def test_model_question_labels_are_mapped_to_known_unresolved_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RewordingProvider:
+        async def complete(self, *_: object, **__: object) -> ProviderResult:
+            return ProviderResult(
+                data={
+                    "questions": [
+                        {
+                            "gap": "panel_power_status",
+                            "text": "Is the electric panel energized or isolated?",
+                        },
+                        {
+                            "gap": "water_contact",
+                            "text": "Is water touching electrical wiring?",
+                        },
+                    ]
+                },
+                raw="{}",
+                provider="test",
+                provider_ref="test-ref",
+                latency_ms=1,
+                tokens_in=1,
+                tokens_out=1,
+                cost_usd=0.0,
+            )
+
+    input_state = state("Water is leaking beside an electric panel.")
+    input_state["missing_information"] = [
+        "Whether the electric panel is energized or isolated.",
+        "Whether water is touching electrical wiring.",
+    ]
+    monkeypatch.setattr(intake_module, "get_provider", lambda: RewordingProvider())
+
+    update = asyncio.run(compose_questions(input_state))
+
+    assert [question["gap"] for question in update["questions"]] == input_state[
+        "missing_information"
+    ]
 
 
 def test_round_cap_skips_questions_but_keeps_unanswered_gaps() -> None:

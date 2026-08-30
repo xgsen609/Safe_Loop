@@ -415,6 +415,69 @@ def test_successful_submission_schedules_intake(
     assert captured["audio_media_id"] is None
 
 
+def test_intake_retry_runs_in_request_and_returns_advanced_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads = 0
+
+    async def fake_report(_: UUID) -> dict[str, object]:
+        nonlocal reads
+        reads += 1
+        return {
+            "id": REPORT_ID,
+            "reporter_id": REPORTER_ID,
+            "status": "submitted" if reads == 1 else "clarifying",
+        }
+
+    async def fake_rate_limit(**_: object) -> None:
+        return None
+
+    async def fake_run_intake(report_id: UUID, request_id: str | None) -> bool:
+        assert report_id == REPORT_ID
+        assert request_id == "request-retry"
+        return True
+
+    monkeypatch.setattr(reports_api, "get_report", fake_report)
+    monkeypatch.setattr(reports_api, "enforce_rate_limit", fake_rate_limit)
+    monkeypatch.setattr(reports_api, "run_intake", fake_run_intake)
+    monkeypatch.setattr(reports_api, "current_request_id", lambda: "request-retry")
+
+    result = asyncio.run(
+        reports_api.post_intake_retry(
+            REPORT_ID,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+        )
+    )
+
+    assert result == {"report_id": str(REPORT_ID), "status": "clarifying"}
+
+
+def test_intake_retry_reports_a_visible_failure_when_status_is_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_report_read(monkeypatch, status="submitted")
+
+    async def fake_rate_limit(**_: object) -> None:
+        return None
+
+    async def failed_intake(_: UUID, __: str | None) -> bool:
+        return False
+
+    monkeypatch.setattr(reports_api, "enforce_rate_limit", fake_rate_limit)
+    monkeypatch.setattr(reports_api, "run_intake", failed_intake)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            reports_api.post_intake_retry(
+                REPORT_ID,
+                Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+            )
+        )
+
+    assert error.value.status_code == 503
+    assert error.value.detail["code"] == "intake_retry_failed"
+
+
 @pytest.mark.parametrize(
     ("confirmed_text", "raw_transcript", "expected"),
     [

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import type { Locale } from "../../lib/locales";
 import {
   getLessonDraftStatus,
+  retryReportIntake,
   startLessonDraft,
   type LessonDraftRunStatus,
   type ReportDetail,
@@ -43,6 +44,7 @@ export function WorkflowNextStep({
 }) {
   const t = useTranslations();
   const [draftStatus, setDraftStatus] = useState<LessonDraftRunStatus["status"]>("idle");
+  const [intakeRetryStatus, setIntakeRetryStatus] = useState<"idle" | "running" | "failed">("idle");
   const ownerKey = ownerByStatus[report.status];
   const owner = report.status === "action_assigned" && report.current_action
     ? t("workflow.next.namedTechnician", {
@@ -56,6 +58,7 @@ export function WorkflowNextStep({
     : `/${locale}/briefings`;
   const showBriefingAction = audience === "reviewer" && report.status === "lesson_drafted";
   const showLessonRetry = audience === "reviewer" && report.status === "verified_closed";
+  const showIntakeRetry = report.status === "submitted";
 
   useEffect(() => {
     if (!showLessonRetry) return;
@@ -104,6 +107,18 @@ export function WorkflowNextStep({
     }
   }
 
+  async function retryIntake() {
+    setIntakeRetryStatus("running");
+    try {
+      const { data: { session } } = await createClient().auth.getSession();
+      if (!session) throw new Error("session_required");
+      await retryReportIntake(report.id, session.access_token);
+      window.location.reload();
+    } catch {
+      setIntakeRetryStatus("failed");
+    }
+  }
+
   return (
     <Banner
       tone="info"
@@ -141,6 +156,21 @@ export function WorkflowNextStep({
       )}
       {draftStatus === "failed" && (
         <span className="mt-3 block text-sm font-bold">{t("workflow.next.lessonRetryFailed")}</span>
+      )}
+      {showIntakeRetry && (
+        <button
+          className="mt-3 min-h-11 w-full rounded-control border border-primaryStrong bg-surface px-4 text-base font-bold text-primaryStrong disabled:opacity-60"
+          disabled={intakeRetryStatus === "running"}
+          onClick={() => void retryIntake()}
+          type="button"
+        >
+          {intakeRetryStatus === "running"
+            ? t("workflow.next.retryingIntake")
+            : t("workflow.next.retryIntake")}
+        </button>
+      )}
+      {intakeRetryStatus === "failed" && (
+        <span className="mt-3 block text-sm font-bold">{t("workflow.next.intakeRetryFailed")}</span>
       )}
     </Banner>
   );

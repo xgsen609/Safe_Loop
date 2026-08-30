@@ -6,6 +6,7 @@ import { defaultLocale } from "../lib/locales";
 import {
   fileReport,
   listReports,
+  retryReportIntake,
   reviewReport,
   verifyReport,
   type NewReportInput,
@@ -151,6 +152,21 @@ describe("fileReport", () => {
     expect(apiFetch).toHaveBeenCalledWith(
       "/reports?status=under_review&urgency=critical&assignee=00000000-0000-0000-0000-000000000004&needs_manual_triage=true&q=Tower+A&cursor=opaque-cursor&limit=25",
       "test-token",
+    );
+  });
+
+  it("retries a stranded AI intake through the synchronous endpoint", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      report_id: "report-id",
+      status: reportStatus.clarifying,
+    });
+
+    await retryReportIntake("report-id", "test-token");
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/reports/report-id/intake/retry",
+      "test-token",
+      { method: "POST" },
     );
   });
 
