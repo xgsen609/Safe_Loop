@@ -15,9 +15,11 @@ import { defaultLocale, locales } from "../lib/locales";
 import { mediaPhase } from "../lib/media";
 import { listTechnicians } from "../lib/profiles";
 import {
+  getLessonDraftStatus,
   getReport,
   getTimeline,
   reviewReport,
+  startLessonDraft,
   type ReportDetail,
 } from "../lib/reports";
 import { reportStatus } from "../lib/stateMachine";
@@ -31,6 +33,8 @@ vi.mock("../lib/reports", async (importOriginal) => {
     getReport: vi.fn(),
     getTimeline: vi.fn(),
     reviewReport: vi.fn(),
+    getLessonDraftStatus: vi.fn(),
+    startLessonDraft: vi.fn(),
   };
 });
 vi.mock("../lib/profiles", () => ({
@@ -181,6 +185,8 @@ describe("ReviewDecisionPage", () => {
     vi.mocked(getReport).mockReset();
     vi.mocked(getTimeline).mockReset();
     vi.mocked(reviewReport).mockReset();
+    vi.mocked(getLessonDraftStatus).mockReset();
+    vi.mocked(startLessonDraft).mockReset();
     vi.mocked(listTechnicians).mockReset();
     vi.mocked(getReport).mockResolvedValue(report);
     vi.mocked(getTimeline).mockResolvedValue(timeline);
@@ -200,6 +206,13 @@ describe("ReviewDecisionPage", () => {
       status: reportStatus.info_requested,
       assignment_id: null,
       corrective_action_id: null,
+    });
+    vi.mocked(getLessonDraftStatus).mockResolvedValue({
+      report_id: "report-id",
+      status: "idle",
+      started_at: null,
+      finished_at: null,
+      briefing_id: null,
     });
   });
   afterEach(cleanup);
@@ -501,6 +514,51 @@ describe("ReviewDecisionPage", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: zh["action.reject"] })).toBeTruthy();
+  });
+
+  it("takes the reviewer from a completed lesson draft to its publishing editor", async () => {
+    vi.mocked(getReport).mockResolvedValue({
+      ...report,
+      status: reportStatus.lesson_drafted,
+      available_transitions: [
+        { event: "publish_lesson", target: reportStatus.lesson_published, requires_reason: false },
+      ],
+      current_briefing: {
+        id: "briefing-id",
+        version: 1,
+        status: "draft",
+        created_at: "2026-08-22T02:00:00Z",
+        approved_at: null,
+      },
+    });
+
+    renderReview();
+
+    expect(await screen.findByText(en["workflow.next.lesson_drafted"])).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: en["workflow.next.reviewLesson"] }).getAttribute("href"),
+    ).toBe(`/${defaultLocale}/briefings/briefing-id`);
+  });
+
+  it("shows live progress while AI is drafting the lesson", async () => {
+    vi.mocked(getReport).mockResolvedValue({
+      ...report,
+      status: reportStatus.verified_closed,
+      available_transitions: [],
+    });
+    vi.mocked(getLessonDraftStatus).mockResolvedValue({
+      report_id: "report-id",
+      status: "running",
+      started_at: "2026-08-22T02:00:00Z",
+      finished_at: null,
+      briefing_id: null,
+    });
+
+    renderReview();
+
+    expect(await screen.findByRole("progressbar")).toBeTruthy();
+    expect(screen.getByText(en["workflow.next.draftingProgress"])).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en["workflow.next.retryLesson"] })).toBeNull();
   });
 
   it("localises validation error codes instead of showing machine codes", async () => {

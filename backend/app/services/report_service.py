@@ -484,7 +484,8 @@ async def get_report(report_id: UUID) -> asyncpg.Record | None:
               latest.latest_draft,
               current_action.current_action,
               verification_history.verifications,
-              closure.closure_receipt
+              closure.closure_receipt,
+              latest_briefing.current_briefing
             from reports r
             left join lateral (
               select jsonb_build_object(
@@ -579,6 +580,19 @@ async def get_report(report_id: UUID) -> asyncpg.Record | None:
               from closure_receipts receipt
               where receipt.report_id = r.id
             ) closure on true
+            left join lateral (
+              select jsonb_build_object(
+                'id', briefing.id,
+                'version', briefing.version,
+                'status', briefing.status::text,
+                'created_at', briefing.created_at,
+                'approved_at', briefing.approved_at
+              ) as current_briefing
+              from briefings briefing
+              where briefing.report_id = r.id
+              order by briefing.version desc, briefing.created_at desc
+              limit 1
+            ) latest_briefing on true
             where r.id = $1
             """,
             report_id,
@@ -590,7 +604,10 @@ async def get_timeline(report_id: UUID) -> list[asyncpg.Record]:
     async with connection() as conn:
         return await conn.fetch(
             """
-            SELECT audit_log.*, profiles.role::text AS actor_role
+            SELECT
+              audit_log.*,
+              profiles.role::text AS actor_role,
+              nullif(btrim(profiles.display_name), '') AS actor_name
             FROM audit_log
             LEFT JOIN profiles ON profiles.id = audit_log.actor_id
             WHERE audit_log.report_id = $1

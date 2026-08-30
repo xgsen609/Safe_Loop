@@ -42,7 +42,11 @@ from app.services.intake_service import (
     list_report_clarifications,
     run_intake,
 )
-from app.services.lesson_service import run_lesson
+from app.services.lesson_service import (
+    get_lesson_run_status,
+    queue_lesson_run,
+    run_lesson,
+)
 from app.services.report_service import (
     Actor,
     ReportDraftError,
@@ -524,6 +528,11 @@ async def report_detail(
         result["closure_receipt"] = json.loads(closure_receipt)
     elif closure_receipt is None:
         result["closure_receipt"] = None
+    current_briefing = result.get("current_briefing")
+    if isinstance(current_briefing, str):
+        result["current_briefing"] = json.loads(current_briefing)
+    elif current_briefing is None:
+        result["current_briefing"] = None
     result["media"] = media
     result["clarifications"] = [dict(row) for row in clarifications]
     result["can_answer_clarifications"] = (
@@ -666,7 +675,9 @@ async def post_verification(
     except TransitionError as error:
         raise transition_error(error) from error
     if payload.passed and result.report["status"] == ReportStatus.VERIFIED_CLOSED.value:
-        background_tasks.add_task(run_lesson, report_id, current_request_id())
+        queued, _ = await queue_lesson_run(report_id)
+        if queued:
+            background_tasks.add_task(run_lesson, report_id, current_request_id())
     return cast(
         dict[str, object],
         jsonable_encoder(
@@ -683,6 +694,75 @@ async def post_verification(
             }
         ),
     )
+
+
+@router.post("/{report_id}/lesson-draft", status_code=status.HTTP_202_ACCEPTED)
+async def post_lesson_draft(
+    report_id: UUID,
+    background_tasks: BackgroundTasks,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, str]:
+    """Let a reviewer safely restart a lesson job stranded after verification."""
+    report = await get_report(report_id)
+    if report is None:
+        raise HTTPException(404, {"code": "report_not_found", "message": "report does not exist"})
+    try:
+        assert_report_readable(report, actor)
+    except MediaError as error:
+        raise media_error(error) from error
+    if actor.role is not Role.REVIEWER:
+        raise HTTPException(
+            403,
+            {"code": "lesson_actor_forbidden", "message": "lesson drafting requires a reviewer"},
+        )
+    if ReportStatus(report["status"]) is not ReportStatus.VERIFIED_CLOSED:
+        raise HTTPException(
+            409,
+            {"code": "lesson_not_ready", "message": "report is not waiting for lesson drafting"},
+        )
+    queued, run_status = await queue_lesson_run(report_id)
+    if queued:
+        background_tasks.add_task(run_lesson, report_id, current_request_id())
+    return {"report_id": str(report_id), "status": run_status.phase}
+
+
+@router.get("/{report_id}/lesson-draft/status")
+async def lesson_draft_status(
+    report_id: UUID,
+    actor: Actor = Depends(current_actor),
+) -> dict[str, object]:
+    """Report whether drafting is idle, running, complete, or failed."""
+    report = await get_report(report_id)
+    if report is None:
+        raise HTTPException(404, {"code": "report_not_found", "message": "report does not exist"})
+    try:
+        assert_report_readable(report, actor)
+    except MediaError as error:
+        raise media_error(error) from error
+    if actor.role is not Role.REVIEWER:
+        raise HTTPException(
+            403,
+            {"code": "lesson_actor_forbidden", "message": "lesson status requires a reviewer"},
+        )
+    report_status = ReportStatus(report["status"])
+    if report_status in {ReportStatus.LESSON_DRAFTED, ReportStatus.LESSON_PUBLISHED}:
+        current_briefing = report["current_briefing"]
+        briefing = json.loads(current_briefing) if isinstance(current_briefing, str) else current_briefing
+        return {
+            "report_id": str(report_id),
+            "status": "succeeded",
+            "started_at": None,
+            "finished_at": None,
+            "briefing_id": briefing.get("id") if isinstance(briefing, dict) else None,
+        }
+    run_status = await get_lesson_run_status(report_id)
+    return {
+        "report_id": str(report_id),
+        "status": run_status.phase,
+        "started_at": run_status.started_at,
+        "finished_at": run_status.finished_at,
+        "briefing_id": None,
+    }
 
 
 @router.post("/{report_id}/review")

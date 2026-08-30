@@ -30,6 +30,7 @@ import { PhotoStrip } from "../ui/PhotoStrip";
 import { StatusChip } from "../ui/StatusChip";
 import { Timeline, type TimelineEvent } from "../ui/Timeline";
 import { VoiceConfirmedTextarea } from "./VoiceConfirmedTextarea";
+import { WorkflowNextStep } from "./WorkflowNextStep";
 
 const transitionErrorKeys: Record<string, string> = {
   reason_required: "error.reason_required",
@@ -238,8 +239,9 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
   const timelineEvents = timeline.map((entry) => ({
     id: entry.id,
     title: t(`timeline.event.${entry.event}`),
-    detail: t("timeline.actorAt", {
+    detail: t(entry.actor_name ? "timeline.actorNamedAt" : "timeline.actorAt", {
       actor: t(actorKey(entry)),
+      name: entry.actor_name ?? "",
       time: formatDateTime(entry.created_at, locale),
     }),
     note: entry.reason ? t("timeline.reason", { reason: entry.reason }) : undefined,
@@ -549,12 +551,8 @@ export function ReportDetail({ id, requestedLocale }: { id: string; requestedLoc
               </div>
             ))}
           </Card>
-        ) : receipt ? null : (
-          <Banner
-            tone="info"
-            title={t("report.detail.waitingTitle")}
-            detail={t(`report.detail.waiting.${report.status}`)}
-          />
+        ) : (
+          <WorkflowNextStep report={report} locale={locale} audience="reporter" />
         )}
       </div>
       </main>

@@ -44,6 +44,7 @@ import { LanguageSwitch } from "../ui/LanguageSwitch";
 import { PhotoStrip } from "../ui/PhotoStrip";
 import { StatusChip } from "../ui/StatusChip";
 import { Timeline } from "../ui/Timeline";
+import { WorkflowNextStep } from "./WorkflowNextStep";
 
 type ReviewTransition = AvailableTransition & { review_decision: ReviewDecision };
 
@@ -331,8 +332,9 @@ export function ReviewDecisionPage({
   const timelineEvents = timeline.map((entry) => ({
     id: entry.id,
     title: t(`timeline.event.${entry.event}`),
-    detail: t("timeline.actorAt", {
+    detail: t(entry.actor_name ? "timeline.actorNamedAt" : "timeline.actorAt", {
       actor: t(actorKey(entry)),
+      name: entry.actor_name ?? "",
       time: formatDateTime(entry.created_at, locale),
     }),
     note: entry.reason
@@ -648,11 +650,7 @@ export function ReviewDecisionPage({
         )}
 
         {decisions.length === 0 ? (
-          <Banner
-            tone="info"
-            title={t("review.detail.noActionsTitle")}
-            detail={t("review.detail.noActionsDetail")}
-          />
+          <WorkflowNextStep report={report} locale={locale} audience="reviewer" />
         ) : active ? (
           <Card className="space-y-4">
             <div>

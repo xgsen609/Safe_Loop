@@ -13,6 +13,7 @@ from app.api import reports as reports_api
 from app.api.reports import VerifyRequest, verification_error
 from app.domain.enums import ActorType, Role
 from app.services.report_service import Actor
+from app.services.lesson_service import LessonRunStatus
 from app.services.verification_service import (
     VerificationError,
     VerificationResult,
@@ -167,6 +168,10 @@ def test_passed_verification_schedules_one_lesson_run(
         )
 
     monkeypatch.setattr(reports_api, "verify_report", fake_verify)
+    async def fake_queue(_: UUID) -> tuple[bool, LessonRunStatus]:
+        return True, LessonRunStatus("queued")
+
+    monkeypatch.setattr(reports_api, "queue_lesson_run", fake_queue)
     monkeypatch.setattr(
         reports_api,
         "current_request_id",
@@ -194,6 +199,57 @@ def test_passed_verification_schedules_one_lesson_run(
     task = background_tasks.tasks[0]
     assert task.func is reports_api.run_lesson
     assert task.args == (REPORT_ID, "request-verification")
+
+
+def test_reviewer_can_restart_a_stranded_lesson_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_report(_: UUID) -> dict[str, object]:
+        return {"id": REPORT_ID, "status": "verified_closed"}
+
+    monkeypatch.setattr(reports_api, "get_report", fake_report)
+    monkeypatch.setattr(reports_api, "assert_report_readable", lambda *_: None)
+    monkeypatch.setattr(reports_api, "current_request_id", lambda: "request-retry")
+    async def fake_queue(_: UUID) -> tuple[bool, LessonRunStatus]:
+        return True, LessonRunStatus("queued")
+
+    monkeypatch.setattr(reports_api, "queue_lesson_run", fake_queue)
+    background_tasks = BackgroundTasks()
+
+    result = asyncio.run(
+        reports_api.post_lesson_draft(
+            REPORT_ID,
+            background_tasks,
+            Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+        )
+    )
+
+    assert result == {"report_id": str(REPORT_ID), "status": "queued"}
+    assert len(background_tasks.tasks) == 1
+    assert background_tasks.tasks[0].func is reports_api.run_lesson
+    assert background_tasks.tasks[0].args == (REPORT_ID, "request-retry")
+
+
+def test_lesson_restart_only_accepts_verified_closed_reports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_report(_: UUID) -> dict[str, object]:
+        return {"id": REPORT_ID, "status": "lesson_drafted"}
+
+    monkeypatch.setattr(reports_api, "get_report", fake_report)
+    monkeypatch.setattr(reports_api, "assert_report_readable", lambda *_: None)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            reports_api.post_lesson_draft(
+                REPORT_ID,
+                BackgroundTasks(),
+                Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+            )
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "lesson_not_ready"
 
 
 def test_verification_validation_maps_to_a_clean_422() -> None:
