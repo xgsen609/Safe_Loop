@@ -84,6 +84,7 @@ function requiredLabel(label: string): string {
 
 async function reachReview(description: string) {
   const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: /Type instead/ }));
   await user.type(screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])), description);
   await user.type(screen.getByLabelText(requiredLabel(en["report.new.location"])), "Level 6");
   await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
@@ -133,10 +134,8 @@ describe("ReportFlow", () => {
   it("creates a draft, submits it, and redirects", async () => {
     vi.mocked(fileReport).mockResolvedValue({ id: "report-id", human_ref: "SL-2026-00001", status: reportStatus.submitted });
     renderFlow();
-    expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))
-      .toBe(`/${defaultLocale}/reports`);
-    expect(screen.getByRole("link", { name: en["app.profile"] }).getAttribute("href"))
-      .toBe(`/${defaultLocale}/profile`);
+    expect(screen.getByRole("heading", { name: en["report.new.voiceFirstTitle"] })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: en["app.myReports"] })).toBeNull();
     const user = await reachReview("Loose edge protection");
     await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
     await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/${defaultLocale}/report/report-id`));
@@ -153,18 +152,36 @@ describe("ReportFlow", () => {
 
   it("names missing required fields when Continue is clicked", async () => {
     renderFlow();
+    await userEvent.click(screen.getByRole("button", { name: /Type instead/ }));
     await userEvent.click(screen.getByRole("button", { name: en["report.new.continue"] }));
 
     expect(screen.getByRole("alert").textContent).toContain(en["report.new.validation.title"]);
     expect(screen.getByRole("alert").textContent).toContain("What happened, Location");
     expect(screen.getByText(en["report.new.validation.description"])).toBeTruthy();
     expect(screen.getByText(en["report.new.validation.location"])).toBeTruthy();
-    expect(screen.getByRole("heading", { name: en["report.new.captureTitle"] })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: en["report.new.typeTitle"] })).toBeTruthy();
+  });
+
+  it("starts voice-first and lets the reporter switch to the complete typed form", async () => {
+    renderFlow();
+    const user = userEvent.setup();
+
+    expect(screen.getByRole("heading", { name: en["report.new.voiceFirstTitle"] })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "mock voice recording" })).toBeTruthy();
+    expect(screen.queryByLabelText(requiredLabel(en["report.new.whatHappened"]))).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /Type instead/ }));
+
+    expect(screen.getByRole("heading", { name: en["report.new.typeTitle"] })).toBeTruthy();
+    expect(screen.getByLabelText(requiredLabel(en["report.new.whatHappened"]))).toBeTruthy();
+    expect(screen.getByLabelText(requiredLabel(en["report.new.location"]))).toBeTruthy();
+    expect(screen.getByRole("button", { name: en["report.new.continue"] })).toBeTruthy();
   });
 
   it("switches the report page and remembered locale with report language", async () => {
     const view = renderFlow();
     const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Type instead/ }));
     await user.type(
       screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])),
       "Keep this description",
@@ -174,10 +191,8 @@ describe("ReportFlow", () => {
       "Level 8",
     );
 
-    await user.selectOptions(
-      screen.getByLabelText(en["report.new.reportLanguage"]),
-      locales[1],
-    );
+    await user.click(screen.getByRole("button", { name: en["report.new.preferVoice"] }));
+    await user.click(screen.getByRole("button", { name: en["report.new.languageChineseShort"] }));
 
     expect(document.cookie).toContain("safeloop-locale=zh-CN");
     expect(navigation.replace).toHaveBeenCalledWith("/zh-CN/report/new");
@@ -185,6 +200,7 @@ describe("ReportFlow", () => {
 
     view.unmount();
     renderFlow(locales[1]);
+    await user.click(screen.getByRole("button", { name: new RegExp(zh["report.new.typeInstead"]) }));
     expect(
       (screen.getByLabelText(
         zh["report.new.requiredLabel"].replace(
@@ -394,6 +410,7 @@ describe("ReportFlow", () => {
     vi.mocked(raiseAlert).mockResolvedValue(sentAlert);
     renderFlow();
     const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Type instead/ }));
     await user.type(
       screen.getByLabelText(requiredLabel(en["report.new.whatHappened"])),
       "Loose edge protection",

@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 from app.ai.provider import ProviderConfigurationError
 from app.ai.transcription import (
-    Transcript,
     TranscriptionFailure,
     get_transcription_provider,
 )
@@ -146,7 +145,7 @@ async def post_transcribe(
         dict[str, object],
         jsonable_encoder(
             {
-                **cast(Transcript, result).model_dump(mode="json"),
+                **result.model_dump(mode="json"),
                 "transcript_id": stored["id"],
                 "meets_confidence_threshold": usable,
             }

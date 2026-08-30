@@ -70,7 +70,7 @@ async function assertLocalisedSurface(page: Page): Promise<void> {
 async function login(page: Page, locale: E2ELocale, user: E2EUser): Promise<void> {
   await page.goto(`/${locale}/login`);
   await page.getByLabel(copy(locale, "app.email")).fill(user.email);
-  await page.getByLabel(copy(locale, "app.password")).fill(user.password);
+  await page.getByLabel(copy(locale, "app.password"), { exact: true }).fill(user.password);
   await page.getByRole("button", { name: copy(locale, "app.signIn") }).click();
   await expect(page).not.toHaveURL(new RegExp(`/${locale}/login(?:$|\\?)`));
 }
@@ -173,6 +173,9 @@ test.describe.serial("SafeLoop end-to-end contract", () => {
         await assertLocalisedSurface(reporterPage);
 
         await reporterPage.goto(`/${locale}/report/new`);
+        await reporterPage
+          .getByRole("button", { name: new RegExp(copy(locale, "report.new.typeInstead"), "u") })
+          .click();
         await reporterPage.getByLabel(copy(locale, "report.new.whatHappened")).fill(description);
         await reporterPage.getByLabel(copy(locale, "report.new.location")).fill(location);
         await reporterPage.getByRole("button", { name: copy(locale, "report.new.continue") }).click();
@@ -454,6 +457,9 @@ test.describe.serial("SafeLoop end-to-end contract", () => {
         await login(reporterPage, locale, runtime.users[reporterFor(locale)]);
         await login(reviewerPage, locale, runtime.users.reviewer);
         await reporterPage.goto(`/${locale}/report/new`);
+        await reporterPage
+          .getByRole("button", { name: new RegExp(copy(locale, "report.new.typeInstead"), "u") })
+          .click();
         await reporterPage
           .getByLabel(copy(locale, "report.new.whatHappened"))
           .fill(locale === "en" ? "A worker may fall." : "工人可能会坠落。" );

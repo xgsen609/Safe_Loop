@@ -5,10 +5,17 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
 
 from app.ai.provider import StubProvider
 from app.config import get_settings
-from app.health import HealthCheckFailure, check_provider, check_storage, run_deep_health
+from app.health import (
+    HealthCheckFailure,
+    check_live_transcription,
+    check_provider,
+    check_storage,
+    run_deep_health,
+)
 
 
 def test_deep_health_reports_each_component_and_overall_failure() -> None:
@@ -63,3 +70,20 @@ def test_storage_health_checks_private_buckets_without_network(monkeypatch) -> N
 
 def test_stub_provider_health_is_network_free() -> None:
     asyncio.run(check_provider(provider=StubProvider()))
+
+
+def test_live_transcription_health_requires_enabled_valid_config(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("LIVE_TRANSCRIPTION_ENABLED", "false")
+    get_settings.cache_clear()
+    with pytest.raises(HealthCheckFailure) as disabled:
+        asyncio.run(check_live_transcription())
+    assert disabled.value.code == "live_transcription_disabled"
+
+    monkeypatch.setenv("LIVE_TRANSCRIPTION_ENABLED", "true")
+    monkeypatch.setenv("VERTEX_PROJECT_ID", "safe-loop")
+    monkeypatch.setenv("VERTEX_LIVE_TRANSCRIPTION_LOCATION", "asia-southeast1")
+    get_settings.cache_clear()
+    with pytest.raises(HealthCheckFailure) as invalid:
+        asyncio.run(check_live_transcription())
+    assert invalid.value.code == "live_transcription_misconfigured"
+    get_settings.cache_clear()

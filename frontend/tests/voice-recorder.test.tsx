@@ -17,13 +17,27 @@ function expand(flat: Record<string, string>): AbstractIntlMessages {
   return result;
 }
 
-function Harness() {
+function Harness({ variant = "inline" }: { variant?: "inline" | "hero" }) {
   const [file, setFile] = useState<File | null>(null);
   return (
     <NextIntlClientProvider locale="en" messages={expand(en)}>
       <label htmlFor="typed-description">Typed description</label>
       <textarea id="typed-description" defaultValue="Typing still works" />
-      <VoiceRecorder value={file} onChange={setFile} />
+      <VoiceRecorder value={file} onChange={setFile} variant={variant} />
+    </NextIntlClientProvider>
+  );
+}
+
+function DelayedLiveHarness() {
+  const [file, setFile] = useState<File | null>(null);
+  return (
+    <NextIntlClientProvider locale="en" messages={expand(en)}>
+      <VoiceRecorder
+        value={file}
+        onChange={setFile}
+        startLive={() => new Promise(() => undefined)}
+        variant="hero"
+      />
     </NextIntlClientProvider>
   );
 }
@@ -101,6 +115,25 @@ describe("VoiceRecorder", () => {
     expect(await screen.findByRole("button", { name: en["report.voice.recordAgain"] })).toBeTruthy();
     expect(document.querySelector("audio")?.getAttribute("src")).toBe("blob:test-audio");
     expect(stopTrack).toHaveBeenCalled();
+  });
+
+  it("presents the recorder as the primary action in voice-first mode", async () => {
+    render(<Harness variant="hero" />);
+
+    expect(await screen.findByText(en["report.voice.heroPrompt"])).toBeTruthy();
+    expect(screen.getByText(en["report.voice.heroTime"])).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: en["report.voice.record"] }));
+
+    expect(await screen.findByRole("button", { name: en["report.voice.stop"] })).toBeTruthy();
+    expect(screen.getByText(en["report.voice.recording"])).toBeTruthy();
+  });
+
+  it("starts recording without waiting for the live transcript connection", async () => {
+    render(<DelayedLiveHarness />);
+
+    fireEvent.click(await screen.findByRole("button", { name: en["report.voice.record"] }));
+
+    expect(await screen.findByRole("button", { name: en["report.voice.stop"] })).toBeTruthy();
   });
 
   it("hides itself after microphone denial while typed input remains", async () => {

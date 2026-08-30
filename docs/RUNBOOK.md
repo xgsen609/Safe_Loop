@@ -98,6 +98,22 @@ remain independent and must continue to reach reviewers.
    `ai_run_failed` logs. Check Vertex AI status and quota in `asia-southeast1`.
 2. Do not switch production to the stub provider. The stub is only for deterministic
    tests and demos.
+
+## Gemini Live transcription outage
+
+Voice must degrade to recorded-audio transcription and then to typing; it must never
+block filing a report.
+
+1. Check `/health/deep` for `live_transcription_disabled`,
+   `live_transcription_misconfigured`, or `database_schema_missing`.
+2. Confirm Cloud Run has `LIVE_TRANSCRIPTION_ENABLED=true`, the preview model name,
+   and `VERTEX_LIVE_TRANSCRIPTION_LOCATION=global`. Confirm the Vercel build used the
+   Cloud Run `wss://` URL.
+3. Inspect structured failures for invalid tickets, provider unavailability, and
+   missing committed sessions. Do not rely on Cloud Run session affinity: tickets and
+   pending results must remain in the shared Postgres tables.
+4. If Gemini Live is unavailable, leave the fallback enabled. The reporter can stop
+   recording, wait for uploaded-audio transcription, edit the result, or type instead.
 3. Tell reviewers to monitor submitted reports and urgent alerts. Do not directly move
    a report into review or closure.
 4. After Vertex recovers, retry each still-submitted report through the existing service:

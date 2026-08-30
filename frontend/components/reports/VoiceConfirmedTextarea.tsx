@@ -30,6 +30,8 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & {
   onTranscriptIdChange: (transcriptId: string | null) => void;
   onMediaIdChange?: (mediaId: string | null) => void;
   onProcessingChange?: (processing: boolean) => void;
+  presentation?: "voice" | "typed" | "inline";
+  onTranscriptionSettled?: () => void;
 };
 
 export function VoiceConfirmedTextarea({
@@ -43,6 +45,8 @@ export function VoiceConfirmedTextarea({
   onTranscriptIdChange,
   onMediaIdChange,
   onProcessingChange,
+  presentation = "inline",
+  onTranscriptionSettled,
   rows = 4,
   ...fieldProps
 }: Props) {
@@ -113,15 +117,18 @@ export function VoiceConfirmedTextarea({
       setDetectedLocale(transcript.detected_locale);
       if (!transcript.meets_confidence_threshold) {
         setState("lowConfidence");
+        onTranscriptionSettled?.();
         return;
       }
       onChange(transcript.text);
       onTranscriptIdChange(transcript.transcript_id);
       setState("ready");
+      onTranscriptionSettled?.();
     } catch {
       if (runRef.current !== run) return;
       setState("failed");
       setHiddenAfterFailure(true);
+      onTranscriptionSettled?.();
     } finally {
       if (runRef.current === run) {
         onProcessingChange?.(false);
@@ -134,17 +141,20 @@ export function VoiceConfirmedTextarea({
 
   return (
     <div className="space-y-3">
-      <Field
-        {...fieldProps}
-        label={label}
-        rows={rows}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {!hiddenAfterFailure && (
+      {presentation !== "voice" && (
+        <Field
+          {...fieldProps}
+          label={label}
+          rows={rows}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+      {presentation !== "typed" && !hiddenAfterFailure && (
         <VoiceRecorder
           value={audio}
           onChange={(file, liveResult) => void handleRecording(file, liveResult)}
+          variant={presentation === "voice" ? "hero" : "inline"}
           startLive={async (stream) => {
             const client = createClient();
             const { data: { session } } = await client.auth.getSession();
@@ -158,8 +168,8 @@ export function VoiceConfirmedTextarea({
           }}
         />
       )}
-      {interimText && state === null && (
-        <div className="rounded-control border border-border bg-surface px-4 py-3" aria-live="polite">
+      {interimText && (state === null || state === "processing") && (
+        <div className="rounded-control border border-primary/30 bg-primaryTint px-4 py-3" aria-live="polite">
           <p className="text-xs font-bold uppercase tracking-wide text-inkMuted">
             {t("report.voice.liveInterim")}
           </p>

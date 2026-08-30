@@ -21,3 +21,12 @@ input[type="checkbox"] { appearance: none; width: 52px; height: 30px; border: 1p
 input[type="checkbox"]::before { content: ""; display: block; width: 22px; height: 22px; border-radius: var(--r-chip); background: var(--surface); box-shadow: var(--shadow); transition: transform .2s; }
 input[type="checkbox"]:checked { background: var(--primary); }
 input[type="checkbox"]:checked::before { transform: translateX(22px); }
+.hazard-stripe {
+  background: repeating-linear-gradient(
+    135deg,
+    #aeb4b9 0,
+    #aeb4b9 18px,
+    var(--surface) 18px,
+    var(--surface) 36px
+  );
+}

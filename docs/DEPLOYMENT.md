@@ -51,6 +51,9 @@ ALLOW_DEBUG_AUTH=false
 AI_PROVIDER=vertex
 VERTEX_PROJECT_ID=safe-506316
 VERTEX_LOCATION=asia-southeast1
+LIVE_TRANSCRIPTION_ENABLED=true
+VERTEX_LIVE_TRANSCRIPTION_MODEL=gemini-3.5-transcribe-live-preview
+VERTEX_LIVE_TRANSCRIPTION_LOCATION=global
 SITE_TIMEZONE=Asia/Singapore
 SUPPORTED_LOCALES=en,zh-CN
 FRONTEND_ORIGINS=https://<production-vercel-domain>
@@ -70,6 +73,7 @@ Set these Vercel Production environment variables:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase publishable/anon browser key |
 | `BACKEND_URL` | Cloud Run `safeloop-api` URL |
 | `NEXT_PUBLIC_BACKEND_URL` | Same Cloud Run URL |
+| `NEXT_PUBLIC_BACKEND_WS_URL` | Cloud Run URL with `https://` changed to `wss://` |
 | `SITE_TIMEZONE` | `Asia/Singapore` |
 | `NEXT_PUBLIC_REPORT_MEDIA_BUCKET` | `report-media` |
 | `NEXT_PUBLIC_SITE_EMERGENCY_LINE` | The real site emergency line |
@@ -122,7 +126,8 @@ migration chain before browser tests. Production uses the manually dispatched
 2. Run `supabase db push` against the protected production database.
 3. Build `backend/Dockerfile` and deploy `safeloop-api` to Cloud Run
    `asia-southeast1`.
-4. Check `/health` on the deployed revision.
+4. Check `/health` and `/health/deep` on the deployed revision; deep health fails if
+   live transcription is disabled, misconfigured, or its shared-state migration is missing.
 5. Build the Next.js application with Vercel's Production environment and deploy it
    to `sin1`.
 6. Check the English frontend route.

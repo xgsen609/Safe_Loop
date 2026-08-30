@@ -35,6 +35,10 @@ def test_deployment_regions_are_singapore_only() -> None:
     assert "SUPABASE_REGION: ap-southeast-1" in workflow
     assert "VERCEL_REGION: sin1" in workflow
     assert "supabase db push" in workflow
+    assert "LIVE_TRANSCRIPTION_ENABLED=true" in workflow
+    assert "VERTEX_LIVE_TRANSCRIPTION_MODEL=gemini-3.5-transcribe-live-preview" in workflow
+    assert "NEXT_PUBLIC_BACKEND_WS_URL" in workflow
+    assert 'curl --fail --silent --show-error "$backend_url/health/deep"' in workflow
     assert "us-central1" not in workflow
     assert "iad1" not in workflow
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import logging
 import secrets
 import time
 from typing import Literal, cast
@@ -24,7 +24,14 @@ from app.ai.transcription import Transcript
 from app.api.deps import current_actor
 from app.api.rate_limits import enforce_rate_limit
 from app.config import get_settings
+from app.observability import log_event, track_exception
 from app.services.report_service import Actor
+from app.services.live_transcription_store import (
+    consume_live_ticket,
+    consume_pending_live_transcript,
+    issue_live_ticket,
+    store_pending_live_transcript,
+)
 from app.services.transcription_service import (
     TranscriptionServiceError,
     get_audio_media,
@@ -33,6 +40,7 @@ from app.services.transcription_service import (
 )
 
 router = APIRouter(tags=["transcription"])
+logger = logging.getLogger(__name__)
 _MAX_PCM_BYTES = 16000 * 2 * 120
 _FINAL_WAIT_SECONDS = 10.0
 
@@ -46,41 +54,8 @@ class LiveCommitRequest(BaseModel):
     media_id: UUID
 
 
-@dataclass(frozen=True)
-class _Ticket:
-    actor: Actor
-    hint_locale: str
-    expires_at: float
-
-
-@dataclass(frozen=True)
-class _PendingTranscript:
-    actor_id: UUID
-    hint_locale: str
-    text: str
-    detected_locale: str
-    duration_ms: int
-    provider_ref: str
-    latency_ms: int
-    expires_at: float
-
-
-_tickets: dict[str, _Ticket] = {}
-_pending: dict[str, _PendingTranscript] = {}
-_store_lock = asyncio.Lock()
-
-
 def _now() -> float:
     return time.monotonic()
-
-
-async def _prune() -> None:
-    now = _now()
-    async with _store_lock:
-        for key in [key for key, value in _tickets.items() if value.expires_at <= now]:
-            _tickets.pop(key, None)
-        for key in [key for key, value in _pending.items() if value.expires_at <= now]:
-            _pending.pop(key, None)
 
 
 @router.post("/transcribe/live/ticket")
@@ -102,28 +77,24 @@ async def create_live_ticket(
         limit=settings.transcription_rate_limit_per_minute,
         error_code="transcription_rate_limited",
     )
-    await _prune()
-    ticket = secrets.token_urlsafe(32)
-    async with _store_lock:
-        _tickets[ticket] = _Ticket(
-            actor=actor,
-            hint_locale=payload.hint_locale,
-            expires_at=_now() + settings.live_transcription_ticket_ttl_seconds,
-        )
+    ticket = await issue_live_ticket(
+        actor_id=actor.profile_id,
+        hint_locale=payload.hint_locale,
+        ttl_seconds=settings.live_transcription_ticket_ttl_seconds,
+    )
     return {"ticket": ticket, "expires_in": settings.live_transcription_ticket_ttl_seconds}
-
-
-async def _consume_ticket(token: str) -> _Ticket | None:
-    await _prune()
-    async with _store_lock:
-        ticket = _tickets.pop(token, None)
-    return ticket if ticket is not None and ticket.expires_at > _now() else None
 
 
 @router.websocket("/transcribe/live")
 async def transcribe_live(websocket: WebSocket, ticket: str = Query()) -> None:
-    issued = await _consume_ticket(ticket)
+    issued = await consume_live_ticket(ticket)
     if issued is None:
+        log_event(
+            logger,
+            logging.WARNING,
+            "live_transcription_ticket_rejected",
+            code="invalid_or_expired_ticket",
+        )
         await websocket.close(code=4401, reason="invalid live transcription ticket")
         return
     settings = get_settings()
@@ -197,29 +168,43 @@ async def transcribe_live(websocket: WebSocket, ticket: str = Query()) -> None:
                 await asyncio.gather(receiver, return_exceptions=True)
     except WebSocketDisconnect:
         return
-    except Exception:
+    except Exception as error:
+        track_exception(
+            logger,
+            "live_transcription_provider_failed",
+            error,
+            code="provider_unavailable",
+        )
         await websocket.send_json({"type": "failure", "code": "provider_unavailable"})
         await websocket.close(code=1011)
         return
 
     text = " ".join(part.strip() for part in final_parts if part.strip()).strip()
-    if not text or issued.actor.profile_id is None:
+    if not text:
         await websocket.send_json({"type": "failure", "code": "empty_transcript"})
         await websocket.close(code=1000)
         return
-    session_id = secrets.token_urlsafe(24)
     elapsed_ms = max(0, round((_now() - started) * 1000))
-    async with _store_lock:
-        _pending[session_id] = _PendingTranscript(
-            actor_id=issued.actor.profile_id,
+    try:
+        session_id = await store_pending_live_transcript(
+            actor_id=issued.actor_id,
             hint_locale=issued.hint_locale,
             text=text,
             detected_locale=detected_locale,
             duration_ms=round(received_bytes / (16000 * 2) * 1000),
             provider_ref=provider_ref,
             latency_ms=elapsed_ms,
-            expires_at=_now() + 300,
         )
+    except Exception as error:
+        track_exception(
+            logger,
+            "live_transcription_state_store_failed",
+            error,
+            code="state_store_unavailable",
+        )
+        await websocket.send_json({"type": "failure", "code": "state_store_unavailable"})
+        await websocket.close(code=1011)
+        return
     await websocket.send_json(
         {"type": "complete", "session_id": session_id, "text": text, "detected_locale": detected_locale}
     )
@@ -233,10 +218,14 @@ async def commit_live_transcript(
 ) -> dict[str, object]:
     if actor.profile_id is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, {"code": "profile_required"})
-    await _prune()
-    async with _store_lock:
-        pending = _pending.get(payload.session_id)
-    if pending is None or pending.actor_id != actor.profile_id:
+    pending = await consume_pending_live_transcript(payload.session_id, actor.profile_id)
+    if pending is None:
+        log_event(
+            logger,
+            logging.WARNING,
+            "live_transcription_commit_rejected",
+            code="live_transcript_not_found",
+        )
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             {"code": "live_transcript_not_found", "message": "live transcript expired or is unavailable"},
@@ -268,8 +257,6 @@ async def commit_live_transcript(
         transcript_id=stored["id"],
         usable=True,
     )
-    async with _store_lock:
-        _pending.pop(payload.session_id, None)
     return cast(
         dict[str, object],
         jsonable_encoder(

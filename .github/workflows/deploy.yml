@@ -54,6 +54,8 @@ jobs:
 
   backend:
     needs: migrate
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -64,7 +66,8 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Deploy the regional backend container
+      - id: deploy
+        name: Deploy the regional backend container
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
@@ -79,13 +82,15 @@ jobs:
             --source=backend \
             --service-account="$GCP_RUNTIME_SERVICE_ACCOUNT" \
             --allow-unauthenticated \
-            --set-env-vars="^@^APP_ENV=production@ALLOW_DEBUG_AUTH=false@AI_PROVIDER=vertex@VERTEX_PROJECT_ID=$GCP_PROJECT_ID@VERTEX_LOCATION=$GCP_REGION@SITE_TIMEZONE=Asia/Singapore@SUPPORTED_LOCALES=en,zh-CN@FRONTEND_ORIGINS=$FRONTEND_ORIGIN" \
+            --set-env-vars="^@^APP_ENV=production@ALLOW_DEBUG_AUTH=false@AI_PROVIDER=vertex@VERTEX_PROJECT_ID=$GCP_PROJECT_ID@VERTEX_LOCATION=$GCP_REGION@LIVE_TRANSCRIPTION_ENABLED=true@VERTEX_LIVE_TRANSCRIPTION_MODEL=gemini-3.5-transcribe-live-preview@VERTEX_LIVE_TRANSCRIPTION_LOCATION=global@SITE_TIMEZONE=Asia/Singapore@SUPPORTED_LOCALES=en,zh-CN@FRONTEND_ORIGINS=$FRONTEND_ORIGIN" \
             --set-secrets="DATABASE_URL=safeloop-database-url:latest,SUPABASE_JWT_SECRET=safeloop-jwt-secret:latest,SUPABASE_URL=safeloop-url:latest,SUPABASE_SERVICE_ROLE_KEY=safeloop-service-role-key:latest"
           backend_url="$(gcloud run services describe safeloop-api \
             --project="$GCP_PROJECT_ID" \
             --region="$GCP_REGION" \
             --format='value(status.url)')"
+          echo "url=$backend_url" >> "$GITHUB_OUTPUT"
           curl --fail --silent --show-error "$backend_url/health"
+          curl --fail --silent --show-error "$backend_url/health/deep"
 
   frontend:
     needs: backend
@@ -107,9 +112,15 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          DEPLOYED_BACKEND_URL: ${{ needs.backend.outputs.url }}
         run: |
+          test -n "$DEPLOYED_BACKEND_URL"
           npx --yes "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes "vercel@$VERCEL_CLI_VERSION" build --prod --token="$VERCEL_TOKEN"
+          backend_ws_url="${DEPLOYED_BACKEND_URL/https:/wss:}"
+          BACKEND_URL="$DEPLOYED_BACKEND_URL" \
+          NEXT_PUBLIC_BACKEND_URL="$DEPLOYED_BACKEND_URL" \
+          NEXT_PUBLIC_BACKEND_WS_URL="$backend_ws_url" \
+            npx --yes "vercel@$VERCEL_CLI_VERSION" build --prod --token="$VERCEL_TOKEN"
       - name: Deploy the prebuilt frontend
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

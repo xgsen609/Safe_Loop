@@ -11,6 +11,7 @@ from urllib.parse import quote
 
 import httpx
 
+from app.ai.live_transcription import LiveTranscriptionConfig
 from app.ai.provider import AIProvider, get_provider
 from app.config import get_settings
 from app.db import connection
@@ -49,6 +50,8 @@ async def check_database() -> None:
             select 1
             where to_regclass('public.reports') is not null
               and to_regclass('public.audit_log') is not null
+              and to_regclass('public.live_transcription_tickets') is not null
+              and to_regclass('public.live_transcription_sessions') is not null
             """
         )
     if ready != 1:
@@ -95,6 +98,17 @@ async def check_provider(*, provider: AIProvider | None = None) -> None:
         raise HealthCheckFailure("provider_unreachable")
 
 
+async def check_live_transcription() -> None:
+    """Fail production readiness when Gemini Live is disabled or misconfigured."""
+    settings = get_settings()
+    if not settings.live_transcription_enabled:
+        raise HealthCheckFailure("live_transcription_disabled")
+    try:
+        LiveTranscriptionConfig.from_settings(settings).validate()
+    except ValueError as error:
+        raise HealthCheckFailure("live_transcription_misconfigured") from error
+
+
 async def _run_component(name: str, checker: HealthCheck) -> ComponentHealth:
     started = perf_counter()
     try:
@@ -122,11 +136,17 @@ async def run_deep_health(
     checkers: Mapping[str, HealthCheck] | None = None,
 ) -> DeepHealth:
     """Run independent checks concurrently so one timeout cannot hide the others."""
-    active_checkers = checkers or {
-        "database": check_database,
-        "storage": check_storage,
-        "provider": check_provider,
-    }
+    if checkers is not None:
+        active_checkers = checkers
+    else:
+        active_checkers = {
+            "database": check_database,
+            "storage": check_storage,
+            "provider": check_provider,
+        }
+        settings = get_settings()
+        if settings.app_env == "production" or settings.live_transcription_enabled:
+            active_checkers["live_transcription"] = check_live_transcription
     results = await asyncio.gather(
         *(_run_component(name, checker) for name, checker in active_checkers.items())
     )

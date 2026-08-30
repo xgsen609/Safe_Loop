@@ -2,6 +2,7 @@
 
 import {
   ArrowPathIcon,
+  ClockIcon,
   MicrophoneIcon,
   StopIcon,
   TrashIcon,
@@ -42,9 +43,10 @@ type VoiceRecorderProps = {
   value: File | null;
   onChange: (file: File | null, liveResult?: Promise<LiveTranscriptDraft | null>) => void;
   startLive?: (stream: MediaStream) => Promise<LiveRecordingSession | null>;
+  variant?: "inline" | "hero";
 };
 
-export function VoiceRecorder({ value, onChange, startLive }: VoiceRecorderProps) {
+export function VoiceRecorder({ value, onChange, startLive, variant = "inline" }: VoiceRecorderProps) {
   const t = useTranslations();
   const [supported, setSupported] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -56,6 +58,7 @@ export function VoiceRecorder({ value, onChange, startLive }: VoiceRecorderProps
   const timerRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
   const liveSessionRef = useRef<LiveRecordingSession | null>(null);
+  const liveStartRef = useRef<Promise<LiveRecordingSession | null> | null>(null);
   const liveResultRef = useRef<Promise<LiveTranscriptDraft | null> | undefined>(undefined);
 
   useEffect(() => {
@@ -80,6 +83,9 @@ export function VoiceRecorder({ value, onChange, startLive }: VoiceRecorderProps
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     liveSessionRef.current?.cancel();
+    const pendingLive = liveStartRef.current;
+    liveStartRef.current = null;
+    void pendingLive?.then((session) => session?.cancel());
   }, []);
 
   function stopRecording() {
@@ -90,6 +96,10 @@ export function VoiceRecorder({ value, onChange, startLive }: VoiceRecorderProps
     if (liveSessionRef.current) {
       liveResultRef.current = liveSessionRef.current.finish();
       liveSessionRef.current = null;
+    } else if (liveStartRef.current) {
+      const pendingLive = liveStartRef.current;
+      liveStartRef.current = null;
+      liveResultRef.current = pendingLive.then((session) => session?.finish() ?? null);
     }
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }
@@ -112,11 +122,10 @@ export function VoiceRecorder({ value, onChange, startLive }: VoiceRecorderProps
       }
 
       onChange(null);
-      try {
-        liveSessionRef.current = await startLive?.(stream) ?? null;
-      } catch {
-        liveSessionRef.current = null;
-      }
+      const pendingLive = startLive
+        ? Promise.resolve(startLive(stream)).catch(() => null)
+        : Promise.resolve(null);
+      liveStartRef.current = pendingLive;
       liveResultRef.current = undefined;
       chunksRef.current = [];
       streamRef.current = stream;
@@ -154,6 +163,16 @@ export function VoiceRecorder({ value, onChange, startLive }: VoiceRecorderProps
         setElapsedSeconds(elapsed);
         if (elapsed >= recordingCapSeconds) stopRecording();
       }, 250);
+      void pendingLive.then((session) => {
+        if (liveStartRef.current !== pendingLive) return;
+        liveStartRef.current = null;
+        if (!session) return;
+        if (recorderRef.current?.state === "recording") {
+          liveSessionRef.current = session;
+        } else if (!liveResultRef.current) {
+          liveResultRef.current = session.finish();
+        }
+      });
     } catch {
       setSupported(false);
       onChange(null);
@@ -161,6 +180,76 @@ export function VoiceRecorder({ value, onChange, startLive }: VoiceRecorderProps
   }
 
   if (!supported) return null;
+
+  if (variant === "hero") {
+    return (
+      <section className="flex flex-col items-center text-center">
+        {recording ? (
+          <button
+            type="button"
+            className="grid h-40 w-40 place-items-center rounded-full border-[18px] border-dangerTint bg-danger text-ink-inverse shadow-safe focus:outline-none focus:ring-4 focus:ring-dangerTint"
+            aria-label={t("report.voice.stop")}
+            onClick={stopRecording}
+          >
+            <span className="flex flex-col items-center gap-2">
+              <StopIcon className="h-14 w-14" />
+              <span className="font-mono text-lg font-bold">
+                {formatRecordingTime(elapsedSeconds)}
+              </span>
+            </span>
+          </button>
+        ) : value && previewUrl ? (
+          <div className="w-full max-w-sm space-y-3 rounded-card border border-border bg-surface p-4 shadow-safe">
+            <audio className="w-full" controls preload="metadata" src={previewUrl}>
+              {t("report.voice.playbackUnsupported")}
+            </audio>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="flex min-h-11 items-center justify-center gap-2 rounded-control border border-border bg-surface px-3 text-sm font-bold"
+                onClick={() => void startRecording()}
+              >
+                <ArrowPathIcon className="h-5 w-5" />
+                {t("report.voice.recordAgain")}
+              </button>
+              <button
+                type="button"
+                className="flex min-h-11 items-center justify-center gap-2 rounded-control border border-border bg-surface px-3 text-sm font-bold"
+                onClick={() => onChange(null)}
+              >
+                <TrashIcon className="h-5 w-5" />
+                {t("report.voice.remove")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="grid h-44 w-44 place-items-center rounded-full border-[22px] border-primaryTint bg-primary text-ink-inverse shadow-safe outline outline-[14px] outline-primaryTint/60 focus:ring-4 focus:ring-primaryTint"
+            aria-label={t("report.voice.record")}
+            onClick={() => void startRecording()}
+          >
+            <MicrophoneIcon className="h-20 w-20" />
+          </button>
+        )}
+
+        <h2 className="mt-7 text-2xl font-bold">
+          {recording ? t("report.voice.recording") : t("report.voice.heroPrompt")}
+        </h2>
+        <p className="mt-2 flex items-center gap-2 text-base text-inkMuted">
+          <ClockIcon className="h-5 w-5" />
+          <span>
+            {recording
+              ? t("report.voice.timer", {
+                  elapsed: formatRecordingTime(elapsedSeconds),
+                  limit: formatRecordingTime(recordingCapSeconds),
+                })
+              : t("report.voice.heroTime")}
+          </span>
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-card border border-border bg-surfaceSunken p-4">

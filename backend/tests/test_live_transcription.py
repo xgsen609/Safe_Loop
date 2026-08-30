@@ -18,6 +18,7 @@ from app.ai.transcription import Transcript
 from app.api import transcription_live
 from app.api.transcription_live import LiveTicketRequest
 from app.domain.enums import ActorType, Role
+from app.services.live_transcription_store import LiveTicket
 from app.services.report_service import Actor
 
 
@@ -75,18 +76,31 @@ def test_live_ticket_is_short_lived_and_single_use(monkeypatch: pytest.MonkeyPat
     async def no_rate_limit(**_: object) -> None:
         return None
 
+    issued_tokens: dict[str, LiveTicket] = {}
+
+    async def issue_ticket(*, actor_id, hint_locale, ttl_seconds):  # type: ignore[no-untyped-def]
+        assert ttl_seconds == 45
+        issued_tokens["ticket"] = LiveTicket(actor_id, Role.REPORTER, hint_locale)
+        return "ticket"
+
+    async def consume_ticket(token: str) -> LiveTicket | None:
+        return issued_tokens.pop(token, None)
+
     monkeypatch.setattr(transcription_live, "get_settings", lambda: settings)
     monkeypatch.setattr(transcription_live, "enforce_rate_limit", no_rate_limit)
+    monkeypatch.setattr(transcription_live, "issue_live_ticket", issue_ticket)
+    monkeypatch.setattr(transcription_live, "consume_live_ticket", consume_ticket)
     async def exercise() -> None:
         response = await transcription_live.create_live_ticket(
             LiveTicketRequest(hint_locale="zh-CN"), actor
         )
         ticket = str(response["ticket"])
-        issued = await transcription_live._consume_ticket(ticket)
+        issued = await transcription_live.consume_live_ticket(ticket)
         assert issued is not None
-        assert issued.actor == actor
+        assert issued.actor_id == actor.profile_id
+        assert issued.role == actor.role
         assert issued.hint_locale == "zh-CN"
-        assert await transcription_live._consume_ticket(ticket) is None
+        assert await transcription_live.consume_live_ticket(ticket) is None
 
     asyncio.run(exercise())
 
@@ -96,11 +110,16 @@ def test_live_websocket_streams_final_text_without_network(
 ) -> None:
     actor = Actor(ActorType.HUMAN, uuid4(), Role.REPORTER)
     token = "one-time-ticket"
-    transcription_live._tickets[token] = transcription_live._Ticket(
-        actor=actor,
-        hint_locale="zh-CN",
-        expires_at=transcription_live._now() + 45,
-    )
+
+    async def consume_ticket(value: str) -> LiveTicket | None:
+        if value != token or actor.profile_id is None:
+            return None
+        return LiveTicket(actor.profile_id, Role.REPORTER, "zh-CN")
+
+    async def store_pending(**payload: object) -> str:
+        assert payload["actor_id"] == actor.profile_id
+        assert payload["text"] == "六楼模板边缘没有护栏"
+        return "shared-session"
 
     class FakeSession:
         def __init__(self) -> None:
@@ -144,6 +163,8 @@ def test_live_websocket_streams_final_text_without_network(
     )
     monkeypatch.setattr(transcription_live, "get_settings", lambda: settings)
     monkeypatch.setattr(transcription_live, "make_live_client", lambda _: fake_client)
+    monkeypatch.setattr(transcription_live, "consume_live_ticket", consume_ticket)
+    monkeypatch.setattr(transcription_live, "store_pending_live_transcript", store_pending)
     app = FastAPI()
     app.include_router(transcription_live.router)
 
@@ -159,3 +180,4 @@ def test_live_websocket_streams_final_text_without_network(
     assert final["detected_locale"] == "cmn-Hans-CN"
     assert complete["type"] == "complete"
     assert complete["text"] == "六楼模板边缘没有护栏"
+    assert complete["session_id"] == "shared-session"

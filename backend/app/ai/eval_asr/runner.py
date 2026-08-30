@@ -6,16 +6,12 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
-from typing import Final, Literal, Sequence, TypeVar, cast
+from typing import Final, Literal, Sequence, TypeVar
 import unicodedata
 
 from pydantic import BaseModel, Field
 
-from app.ai.transcription import (
-    Transcript,
-    TranscriptionFailure,
-    TranscriptionProvider,
-)
+from app.ai.transcription import TranscriptionFailure, TranscriptionProvider
 
 _ROOT: Final = Path(__file__).parent
 _FIXTURES_PATH: Final = _ROOT / "fixtures.json"
@@ -188,7 +184,7 @@ async def evaluate(
                 )
             )
             continue
-        transcript = cast(Transcript, result)
+        transcript = result
         hypothesis_characters = _normalised_characters(transcript.text)
         hypothesis_words = _normalised_words(transcript.text)
         results.append(

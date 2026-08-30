@@ -8,6 +8,8 @@ import socket
 
 import pytest
 
+from app.config import get_settings
+
 
 def _is_loopback(address: object) -> bool:
     if not isinstance(address, tuple) or not address:
@@ -30,8 +32,12 @@ def offline_stub_boundary(
 ) -> Iterator[None]:
     """Block external sockets except in explicitly named Postgres integration tests."""
     monkeypatch.setenv("AI_PROVIDER", "stub")
+    get_settings.cache_clear()
     if str(request.node.path).endswith("_db.py"):
-        yield
+        try:
+            yield
+        finally:
+            get_settings.cache_clear()
         return
 
     real_socket = socket.socket
@@ -66,4 +72,7 @@ def offline_stub_boundary(
     monkeypatch.setattr(socket, "socket", GuardedSocket)
     monkeypatch.setattr(socket, "create_connection", blocked_connection)
     monkeypatch.setattr(socket, "getaddrinfo", guarded_getaddrinfo)
-    yield
+    try:
+        yield
+    finally:
+        get_settings.cache_clear()
