@@ -261,6 +261,7 @@ export async function fileReport(
   photo?: ReportPhotoUpload,
   existingDraftId?: string,
   transcriptId?: string,
+  audioMediaId?: string,
 ): Promise<SubmittedReport> {
   const created = existingDraftId
     ? await apiFetch<CreatedReport>(`/reports/${existingDraftId}`, accessToken, {
@@ -281,6 +282,7 @@ export async function fileReport(
       target: reportStatus.submitted,
       confirmed_text: input.description_original,
       transcript_id: transcriptId,
+      audio_media_id: audioMediaId,
     }),
   });
 }

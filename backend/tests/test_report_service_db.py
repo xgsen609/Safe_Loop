@@ -175,6 +175,67 @@ def test_voice_edit_preserves_raw_transcript_and_submits_confirmed_text() -> Non
         run(cleanup(report_id))
 
 
+def test_voice_submission_keeps_only_the_selected_final_audio() -> None:
+    report_id = run(create_report(REPORTER_ID, ""))
+    first_media_id = uuid4()
+    final_media_id = uuid4()
+    final_transcript_id = uuid4()
+    try:
+        async def seed_recordings() -> None:
+            async with connection() as conn:
+                await conn.execute(
+                    """
+                    insert into report_media (
+                      id, report_id, storage_path, mime_type, phase
+                    ) values
+                      ($1, $3, $4, 'audio/webm', 'original'),
+                      ($2, $3, $5, 'audio/webm', 'original')
+                    """,
+                    first_media_id,
+                    final_media_id,
+                    report_id,
+                    f"{REPORTER_ID}/{report_id}/first.webm",
+                    f"{REPORTER_ID}/{report_id}/final.webm",
+                )
+                await conn.execute(
+                    """
+                    insert into transcripts (
+                      id, media_id, report_id, provider, model, hint_locale,
+                      detected_locale, text_raw, confidence, duration_ms
+                    ) values ($1, $2, $3, 'stub', 'stub-v1', 'en-SG',
+                              'en-SG', 'Final attempt', 0.95, 6000)
+                    """,
+                    final_transcript_id,
+                    final_media_id,
+                    report_id,
+                )
+
+        run(seed_recordings())
+        run(submit_report(
+            report_id,
+            Actor(ActorType.HUMAN, REPORTER_ID, Role.REPORTER),
+            confirmed_text="Final attempt",
+            transcript_id=final_transcript_id,
+            audio_media_id=final_media_id,
+        ))
+
+        async def stored_audio_ids() -> list[UUID]:
+            async with connection() as conn:
+                rows = await conn.fetch(
+                    """
+                    select id from report_media
+                    where report_id = $1 and mime_type like 'audio/%'
+                    order by id
+                    """,
+                    report_id,
+                )
+                return [row["id"] for row in rows]
+
+        assert run(stored_audio_ids()) == [final_media_id]
+    finally:
+        run(cleanup(report_id))
+
+
 def test_legal_transition_updates_status_and_adds_one_audit() -> None:
     report_id = run(make_report())
     try:

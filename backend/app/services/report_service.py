@@ -9,15 +9,21 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import logging
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 from asyncpg.pool import PoolConnectionProxy
+import httpx
 
+from app.config import get_settings
 from app.db import connection
 from app.domain.enums import ActorType, InputMode, ReportStatus, Role, Urgency
 from app.domain.transitions import TransitionError, assert_can
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -663,8 +669,9 @@ async def submit_report(
     *,
     confirmed_text: str,
     transcript_id: UUID | None,
+    audio_media_id: UUID | None = None,
 ) -> asyncpg.Record:
-    """Persist only human-confirmed text and atomically submit the draft."""
+    """Persist confirmed text and only the reporter's final audio recording."""
     confirmed = confirmed_text.strip()
     if not confirmed:
         raise ReportSubmissionError(
@@ -677,6 +684,7 @@ async def submit_report(
             "report submission requires a human profile",
         )
 
+    discarded_audio_paths: list[str] = []
     async with connection() as conn:
         async with conn.transaction():
             report = await conn.fetchrow(
@@ -695,6 +703,59 @@ async def submit_report(
                 raise ReportSubmissionError(
                     "report_not_submittable", "only a draft can be submitted"
                 )
+
+            selected_audio_id = audio_media_id
+            if transcript_id is not None:
+                transcript_media_id = await conn.fetchval(
+                    "select media_id from transcripts where id = $1 and report_id = $2",
+                    transcript_id,
+                    report_id,
+                )
+                if transcript_media_id is None:
+                    raise ReportSubmissionError(
+                        "transcript_not_found",
+                        "transcript does not belong to this report",
+                    )
+                if selected_audio_id is None:
+                    selected_audio_id = transcript_media_id
+                elif selected_audio_id != transcript_media_id:
+                    raise ReportSubmissionError(
+                        "audio_transcript_mismatch",
+                        "final audio does not match the confirmed transcript",
+                    )
+
+            if selected_audio_id is not None:
+                selected_audio = await conn.fetchrow(
+                    """
+                    select id
+                    from report_media
+                    where id = $1
+                      and report_id = $2
+                      and phase = 'original'::media_phase
+                      and mime_type like 'audio/%'
+                    """,
+                    selected_audio_id,
+                    report_id,
+                )
+                if selected_audio is None:
+                    raise ReportSubmissionError(
+                        "audio_media_not_found",
+                        "final audio does not belong to this report",
+                    )
+
+            discarded_audio = await conn.fetch(
+                """
+                delete from report_media
+                where report_id = $1
+                  and phase = 'original'::media_phase
+                  and mime_type like 'audio/%'
+                  and ($2::uuid is null or id <> $2)
+                returning storage_path
+                """,
+                report_id,
+                selected_audio_id,
+            )
+            discarded_audio_paths = [str(row["storage_path"]) for row in discarded_audio]
 
             try:
                 input_mode = await confirm_transcript_text(
@@ -720,7 +781,7 @@ async def submit_report(
                 confirmed,
                 input_mode.value,
             )
-            return await transition_report(
+            submitted_report = await transition_report(
                 report_id,
                 ReportStatus.SUBMITTED,
                 actor,
@@ -729,9 +790,41 @@ async def submit_report(
                     "transcript_id": (
                         str(transcript_id) if transcript_id is not None else None
                     ),
+                    "audio_media_id": (
+                        str(selected_audio_id)
+                        if selected_audio_id is not None
+                        else None
+                    ),
                 },
                 transaction_connection=conn,
             )
+
+    if discarded_audio_paths:
+        settings = get_settings()
+        if settings.supabase_url and settings.supabase_service_role_key:
+            endpoint = (
+                f"{settings.supabase_url.rstrip('/')}/storage/v1/object/"
+                f"{settings.report_audio_bucket}"
+            )
+            headers = {
+                "apikey": settings.supabase_service_role_key,
+                "Authorization": f"Bearer {settings.supabase_service_role_key}",
+            }
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.request(
+                        "DELETE",
+                        endpoint,
+                        headers=headers,
+                        json={"prefixes": discarded_audio_paths},
+                    )
+                    response.raise_for_status()
+            except httpx.HTTPError:
+                logger.warning(
+                    "final audio selected but discarded storage objects could not be removed",
+                    extra={"report_id": str(report_id)},
+                )
+    return submitted_report
 
 
 async def transition_report(
