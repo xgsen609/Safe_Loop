@@ -253,12 +253,7 @@ export function VoiceRecorder({ value, onChange, startLive, variant = "inline" }
     <section className="rounded-card border border-border bg-surfaceSunken p-4">
       <div className="flex items-start gap-3">
         <MicrophoneIcon className="mt-0.5 h-6 w-6 shrink-0 text-primaryStrong" />
-        <div>
-          <h2 className="text-base font-bold">{t("report.voice.title")}</h2>
-          <p className="mt-1 text-sm leading-5 text-inkMuted">
-            {t("report.voice.storageNotice")}
-          </p>
-        </div>
+        <h2 className="text-base font-bold">{t("report.voice.title")}</h2>
       </div>
 
       {recording ? (
