@@ -55,7 +55,6 @@ export default function LoginForm() {
 
   return (
     <main className="min-h-screen bg-bg pb-6 sm:pb-12">
-      <div className="hazard-stripe h-2 w-full" aria-hidden="true" />
       <div className="mx-auto flex w-full max-w-[520px] flex-col px-6 pb-6 pt-4 sm:px-7 sm:pb-10 sm:pt-10">
         <div
           className="ml-auto flex rounded-chip bg-surfaceSunken p-1"

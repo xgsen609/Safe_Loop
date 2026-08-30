@@ -30,3 +30,17 @@ input[type="checkbox"]:checked::before { transform: translateX(22px); }
     var(--surface) 36px
   );
 }
+.profile-identity-card {
+  border-color: rgba(255, 255, 255, .08);
+  background: linear-gradient(135deg, #4a2a17 0%, #321a0b 100%);
+  box-shadow: 0 16px 36px rgba(50, 26, 11, .2);
+}
+.profile-identity-orb {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  right: -42px;
+  top: -50px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .06);
+}
