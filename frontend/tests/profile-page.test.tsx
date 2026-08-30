@@ -78,6 +78,7 @@ describe("ProfilePage", () => {
       expect(screen.getByText(profile.email!)).toBeTruthy();
       expect(screen.getAllByText(en[`timeline.actor.${role}`]).length).toBeGreaterThan(0);
       expect(screen.getByText(en[`profile.roleDescription.${role}`])).toBeTruthy();
+      expect(screen.getByRole("img", { name: en["login.logoAlt"] })).toBeTruthy();
       expect(screen.getByRole("link", { name: entry.label }).getAttribute("href"))
         .toBe(entry.href);
       expect(screen.getByRole("link", { name: en["app.profile"] }).getAttribute("href"))

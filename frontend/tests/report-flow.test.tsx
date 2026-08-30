@@ -135,7 +135,7 @@ describe("ReportFlow", () => {
     vi.mocked(fileReport).mockResolvedValue({ id: "report-id", human_ref: "SL-2026-00001", status: reportStatus.submitted });
     renderFlow();
     expect(screen.getByRole("heading", { name: en["report.new.voiceFirstTitle"] })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: en["app.myReports"] })).toBeNull();
+    expect(screen.getByRole("link", { name: en["app.myReports"] })).toBeTruthy();
     const user = await reachReview("Loose edge protection");
     await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
     await waitFor(() => expect(navigation.push).toHaveBeenCalledWith(`/${defaultLocale}/report/report-id`));

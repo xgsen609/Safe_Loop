@@ -7,8 +7,10 @@ import {
   LanguageIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 
+import safeLoopLogo from "../../app/login/safeloop-logo.png";
 import type { CurrentProfile } from "../../lib/auth";
 import { defaultLocale, isLocale, locales } from "../../lib/locales";
 import { SignOutButton } from "../auth/SignOutButton";
@@ -28,7 +30,6 @@ export function ProfilePage({
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
   const navItems = useRoleNavigation(locale, profile.role);
   const reviewerSurface = profile.role === "reviewer" || profile.role === "admin";
-  const initial = profile.displayName.trim().charAt(0).toLocaleUpperCase(locale) || "?";
 
   return (
     <AppShell
@@ -54,22 +55,31 @@ export function ProfilePage({
       )}
     >
       <section className="space-y-4 pb-8 pt-3">
-        <Card className="space-y-4 text-center">
-          <div
-            aria-hidden="true"
-            className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-primaryTint text-3xl font-bold text-primaryStrong"
-          >
-            {initial}
+        <Card className="profile-identity-card relative overflow-hidden text-ink-inverse">
+          <div className="profile-identity-orb" aria-hidden="true" />
+          <div className="relative flex items-center gap-4">
+            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[24px] bg-surface p-1.5 shadow-safe">
+              <Image
+                src={safeLoopLogo}
+                width={96}
+                height={96}
+                priority
+                alt={t("login.logoAlt")}
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-ink-inverse/70">{t("profile.signedIn")}</p>
+              <h2 className="mt-1 break-words text-2xl font-bold text-ink-inverse">
+                {profile.displayName}
+              </h2>
+              <div className="mt-3 inline-flex items-center gap-2 rounded-chip bg-ink-inverse/15 px-4 py-2 font-bold text-ink-inverse">
+                <ShieldCheckIcon className="h-5 w-5" />
+                <span>{t(`timeline.actor.${profile.role}`)}</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-bold text-inkMuted">{t("profile.signedIn")}</p>
-            <h2 className="mt-1 text-2xl font-bold text-ink">{profile.displayName}</h2>
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-chip bg-primaryTint px-4 py-2 font-bold text-primaryStrong">
-            <ShieldCheckIcon className="h-5 w-5" />
-            <span>{t(`timeline.actor.${profile.role}`)}</span>
-          </div>
-          <p className="text-base leading-6 text-inkMuted">
+          <p className="relative mt-5 border-t border-ink-inverse/15 pt-4 text-base leading-6 text-ink-inverse/75">
             {t(`profile.roleDescription.${profile.role}`)}
           </p>
         </Card>

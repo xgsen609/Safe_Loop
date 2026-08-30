@@ -367,7 +367,6 @@ export function ReportFlow() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[430px] flex-col bg-bg text-ink">
-      <div className="hazard-stripe h-2 w-full shrink-0" aria-hidden="true" />
       <main className="flex-1 px-5 pb-6">
       <header className="grid grid-cols-[44px_1fr_64px] items-center py-5">
         <button
@@ -396,7 +395,7 @@ export function ReportFlow() {
 
       {step === "capture" && (
         <div className={captureMode === "voice"
-          ? "flex min-h-[calc(100dvh-92px)] flex-col pb-2"
+          ? "flex min-h-[calc(100dvh-164px)] flex-col pb-2"
           : "space-y-5 pb-4"}
         >
           {captureMode === "voice" ? (
@@ -787,12 +786,10 @@ export function ReportFlow() {
         </div>
       )}
       </main>
-      {step !== "capture" && (
-        <BottomNavigation
-          items={navItems}
-          activeHref={`/${locale}/report/new`}
-        />
-      )}
+      <BottomNavigation
+        items={navItems}
+        activeHref={`/${locale}/report/new`}
+      />
     </div>
   );
 }
