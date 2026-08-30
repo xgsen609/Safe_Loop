@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewDecisionPage } from "../components/reports/ReviewDecisionPage";
 import { defaultLocale, locales } from "../lib/locales";
 import { mediaPhase } from "../lib/media";
+import { listTechnicians } from "../lib/profiles";
 import {
   getReport,
   getTimeline,
@@ -32,6 +33,9 @@ vi.mock("../lib/reports", async (importOriginal) => {
     reviewReport: vi.fn(),
   };
 });
+vi.mock("../lib/profiles", () => ({
+  listTechnicians: vi.fn(),
+}));
 vi.mock("../lib/supabase/browser", () => ({
   createClient: () => ({
     auth: {
@@ -177,8 +181,19 @@ describe("ReviewDecisionPage", () => {
     vi.mocked(getReport).mockReset();
     vi.mocked(getTimeline).mockReset();
     vi.mocked(reviewReport).mockReset();
+    vi.mocked(listTechnicians).mockReset();
     vi.mocked(getReport).mockResolvedValue(report);
     vi.mocked(getTimeline).mockResolvedValue(timeline);
+    vi.mocked(listTechnicians).mockResolvedValue([
+      {
+        id: "00000000-0000-0000-0000-000000000004",
+        display_name: "Ah Hock",
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000007",
+        display_name: "Siti Aminah",
+      },
+    ]);
     vi.mocked(reviewReport).mockResolvedValue({
       review_id: "review-id",
       report_id: "report-id",
@@ -329,8 +344,8 @@ describe("ReviewDecisionPage", () => {
       screen.getByLabelText(en["review.detail.correctionReason"]),
       "The action was missing.",
     );
-    await user.type(
-      screen.getByLabelText(en["review.detail.assigneeId"]),
+    await user.selectOptions(
+      screen.getByLabelText(en["review.detail.assignee"]),
       "00000000-0000-0000-0000-000000000004",
     );
     fireEvent.change(screen.getByLabelText(en["review.detail.dueAt"]), {
@@ -389,8 +404,8 @@ describe("ReviewDecisionPage", () => {
     await user.click(
       await screen.findByRole("button", { name: en["action.approve_action"] }),
     );
-    await user.type(
-      screen.getByLabelText(en["review.detail.assigneeId"]),
+    await user.selectOptions(
+      screen.getByLabelText(en["review.detail.assignee"]),
       "00000000-0000-0000-0000-000000000004",
     );
     fireEvent.change(screen.getByLabelText(en["review.detail.dueAt"]), {
@@ -413,6 +428,64 @@ describe("ReviewDecisionPage", () => {
     expect(submitted.corrected_urgency).toBeUndefined();
     expect(submitted.corrected_action).toBeUndefined();
     expect(submitted.correction_reason).toBeUndefined();
+  });
+
+  it("shows the selected technician after approval is saved", async () => {
+    const assignedReport: ReportDetail = {
+      ...report,
+      status: reportStatus.action_assigned,
+      current_action: {
+        id: "action-id",
+        assignment_id: "assignment-id",
+        assignee_id: "00000000-0000-0000-0000-000000000004",
+        assignee_name: "Ah Hock",
+        assignment_active: true,
+        action_text: report.latest_draft!.suggested_action!,
+        status: "assigned",
+        rework_count: 0,
+        due_at: "2026-08-25T12:00:00Z",
+        completed_note: null,
+        submitted_at: null,
+      },
+      available_transitions: [],
+    };
+    vi.mocked(getReport)
+      .mockResolvedValueOnce(report)
+      .mockResolvedValueOnce(assignedReport);
+    vi.mocked(reviewReport).mockResolvedValue({
+      review_id: "review-id",
+      report_id: "report-id",
+      status: reportStatus.action_assigned,
+      assignment_id: "assignment-id",
+      corrective_action_id: "action-id",
+    });
+    const user = userEvent.setup();
+    renderReview();
+
+    await user.click(
+      await screen.findByRole("button", { name: en["action.approve_action"] }),
+    );
+    await user.selectOptions(
+      screen.getByLabelText(en["review.detail.assignee"]),
+      assignedReport.current_action!.assignee_id,
+    );
+    fireEvent.change(screen.getByLabelText(en["review.detail.dueAt"]), {
+      target: { value: "2026-08-25T12:00" },
+    });
+    await user.click(
+      screen.getByRole("button", { name: en["review.detail.reviewApproval"] }),
+    );
+    expect(
+      screen.getByText(
+        en["review.detail.confirmAssignee"].replace("{name}", "Ah Hock"),
+      ),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: en["review.detail.confirmApproval"] }),
+    );
+
+    expect(await screen.findByText(en["review.detail.assignedTo"])).toBeTruthy();
+    expect(screen.getByText("Ah Hock")).toBeTruthy();
   });
 
   it("renders the review context and decisions in Simplified Chinese", async () => {

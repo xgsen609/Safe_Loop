@@ -25,6 +25,10 @@ from app.domain.enums import (
 from app.domain.transitions import TransitionError, allowed_targets, find
 from app.observability import current_request_id
 from app.services.action_service import ActionError, submit_action
+from app.services.content_localization_service import (
+    localize_report_items_zh,
+    localize_report_zh,
+)
 from app.services.media_service import (
     MediaError,
     assert_report_readable,
@@ -346,6 +350,7 @@ async def report_list(
     q: str | None = Query(default=None, max_length=200),
     cursor: str | None = Query(default=None, max_length=1000),
     limit: int = Query(default=25, ge=1, le=100),
+    locale: str | None = Query(default=None),
     actor: Actor = Depends(current_actor),
 ) -> dict[str, object]:
     """Return one role-scoped queue page and its opaque continuation cursor."""
@@ -413,6 +418,8 @@ async def report_list(
                     expires_at if isinstance(evidence_path, str) else None
                 )
         items.append(item)
+    if locale == "zh-CN":
+        items = await localize_report_items_zh(items)
     return cast(
         dict[str, object],
         jsonable_encoder(
@@ -480,7 +487,11 @@ async def patch_report_draft(
 
 
 @router.get("/{report_id}")
-async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) -> dict[str, object]:
+async def report_detail(
+    report_id: UUID,
+    actor: Actor = Depends(current_actor),
+    locale: str | None = Query(default=None),
+) -> dict[str, object]:
     """Return a report and the legal targets for the calling actor."""
     report = await get_report(report_id)
     if report is None:
@@ -535,6 +546,8 @@ async def report_detail(report_id: UUID, actor: Actor = Depends(current_actor)) 
             transition_payload["review_decision"] = decision.value
         available.append(transition_payload)
     result["available_transitions"] = available
+    if locale == "zh-CN":
+        result = await localize_report_zh(result)
     return cast(dict[str, object], jsonable_encoder(result))
 
 

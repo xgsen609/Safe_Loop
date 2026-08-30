@@ -71,7 +71,7 @@ def use_fake_connection(
     return fake
 
 
-def test_queue_uses_urgency_age_keyset_not_offset(
+def test_queue_uses_urgency_and_newest_first_keyset_not_offset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = use_fake_connection(monkeypatch, [queue_row(0), queue_row(1), queue_row(2)])
@@ -83,7 +83,10 @@ def test_queue_uses_urgency_age_keyset_not_offset(
 
     assert len(first_page.rows) == 2
     assert first_page.next_cursor is not None
-    assert "order by _urgency_rank desc, r.created_at, r.id" in fake.query.lower()
+    assert (
+        "order by _urgency_rank desc, r.created_at desc, r.id desc"
+        in fake.query.lower()
+    )
     assert "offset" not in fake.query.lower()
     assert "coalesce(action.rework_count, 0) >= 2 as rework_attention" in fake.query.lower()
     assert "as overdue_count" in fake.count_query.lower()
@@ -99,7 +102,7 @@ def test_queue_uses_urgency_age_keyset_not_offset(
             limit=2,
         )
     )
-    assert "(r.created_at, r.id) >" in second_fake.query
+    assert "(r.created_at, r.id) <" in second_fake.query
     assert REPORT_IDS[1] in second_fake.arguments
 
 

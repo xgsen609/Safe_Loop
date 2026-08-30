@@ -153,7 +153,7 @@ async def list_reports(
     cursor: str | None = None,
     limit: int = 25,
 ) -> ReportPage:
-    """List only role-visible reports using a stable urgency-and-age cursor."""
+    """List role-visible reports by urgency, then newest first, with a stable cursor."""
     if (
         actor.actor_type is not ActorType.HUMAN
         or actor.profile_id is None
@@ -228,7 +228,7 @@ async def list_reports(
         clauses.append(
             f"(({_URGENCY_RANK_SQL}) < {urgency_parameter} or "
             f"(({_URGENCY_RANK_SQL}) = {urgency_parameter} and "
-            f"(r.created_at, r.id) > ({created_parameter}, {id_parameter})))"
+            f"(r.created_at, r.id) < ({created_parameter}, {id_parameter})))"
         )
 
     where_sql = " and ".join(clauses) if clauses else "true"
@@ -246,7 +246,7 @@ async def list_reports(
             ({_URGENCY_RANK_SQL}) as _urgency_rank
           from reports r
           where {where_sql}
-          order by _urgency_rank desc, r.created_at, r.id
+          order by _urgency_rank desc, r.created_at desc, r.id desc
           limit {page_size_parameter}
         )
         select
@@ -331,7 +331,7 @@ async def list_reports(
           order by corrective_action.created_at desc, corrective_action.id desc
           limit 1
         ) action on true
-        order by queue_page._urgency_rank desc, queue_page.created_at, queue_page.id
+        order by queue_page._urgency_rank desc, queue_page.created_at desc, queue_page.id desc
     """
     async with connection() as conn:
         rows = await conn.fetch(sql, *values)

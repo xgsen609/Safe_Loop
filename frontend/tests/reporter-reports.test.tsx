@@ -94,7 +94,7 @@ describe("ReporterReportsPage", () => {
 
     expect(await screen.findByText(report.summary)).toBeTruthy();
     expect(listReports).toHaveBeenCalledWith(
-      { cursor: undefined, limit: 25 },
+      { cursor: undefined, limit: 25, locale: "en" },
       "test-token",
     );
     expect(screen.getByRole("link", { name: en["app.home"] }).getAttribute("href"))

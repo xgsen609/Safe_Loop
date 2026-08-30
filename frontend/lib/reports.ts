@@ -242,6 +242,7 @@ export type ReportListFilters = {
   q?: string;
   cursor?: string;
   limit?: number;
+  locale?: Locale;
 };
 
 export type TimelineEntry = {
@@ -297,8 +298,13 @@ export function createReportDraft(
   });
 }
 
-export function getReport(reportId: string, accessToken: string): Promise<ReportDetail> {
-  return apiFetch<ReportDetail>(`/reports/${reportId}`, accessToken);
+export function getReport(
+  reportId: string,
+  accessToken: string,
+  locale?: Locale,
+): Promise<ReportDetail> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  return apiFetch<ReportDetail>(`/reports/${reportId}${query}`, accessToken);
 }
 
 export function listReports(filters: ReportListFilters, accessToken: string): Promise<ReportListPage> {
@@ -310,6 +316,7 @@ export function listReports(filters: ReportListFilters, accessToken: string): Pr
   if (filters.q?.trim()) params.set("q", filters.q.trim());
   if (filters.cursor) params.set("cursor", filters.cursor);
   if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.locale) params.set("locale", filters.locale);
   const query = params.toString();
   return apiFetch<ReportListPage>(`/reports${query ? `?${query}` : ""}`, accessToken);
 }

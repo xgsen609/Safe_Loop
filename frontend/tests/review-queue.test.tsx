@@ -89,7 +89,7 @@ describe("ReviewQueue", () => {
   });
   afterEach(cleanup);
 
-  it("loads under-review reports and renders the required row fields", async () => {
+  it("loads all reports by default and renders the required row fields", async () => {
     renderQueue();
 
     expect(await screen.findByText(queueItem.summary)).toBeTruthy();
@@ -108,11 +108,12 @@ describe("ReviewQueue", () => {
     ).toBe(`/${defaultLocale}/review/${queueItem.id}`);
     expect(listReports).toHaveBeenCalledWith(
       {
-        status: reportStatus.under_review,
+        status: undefined,
         urgency: undefined,
         needsManualTriage: false,
         q: undefined,
         cursor: undefined,
+        locale: defaultLocale,
       },
       "test-token",
     );
@@ -155,6 +156,7 @@ describe("ReviewQueue", () => {
           needsManualTriage: false,
           q: undefined,
           cursor: undefined,
+          locale: defaultLocale,
         },
         "test-token",
       ),
@@ -197,11 +199,12 @@ describe("ReviewQueue", () => {
     expect(await screen.findByText("SL-2026-00002")).toBeTruthy();
     expect(listReports).toHaveBeenLastCalledWith(
       {
-        status: reportStatus.under_review,
+        status: undefined,
         urgency: undefined,
         needsManualTriage: false,
         q: undefined,
         cursor: "opaque-next",
+        locale: defaultLocale,
       },
       "test-token",
     );
@@ -233,9 +236,42 @@ describe("ReviewQueue", () => {
           needsManualTriage: true,
           q: undefined,
           cursor: undefined,
+          locale: defaultLocale,
         },
         "test-token",
       ),
     );
+  });
+
+  it("searches across all statuses even after a status was selected", async () => {
+    renderQueue();
+    const user = userEvent.setup();
+    const filter = await screen.findByRole("combobox", {
+      name: en["review.queue.statusFilter"],
+    });
+
+    await user.selectOptions(filter, reportStatus.under_review);
+    await user.type(
+      screen.getByLabelText(en["review.queue.searchLabel"]),
+      "SL-2026-00001",
+    );
+    await user.click(
+      screen.getByRole("button", { name: en["review.queue.search"] }),
+    );
+
+    await waitFor(() => {
+      expect((filter as HTMLSelectElement).value).toBe("");
+      expect(listReports).toHaveBeenLastCalledWith(
+        {
+          status: undefined,
+          urgency: undefined,
+          needsManualTriage: false,
+          q: "SL-2026-00001",
+          cursor: undefined,
+          locale: defaultLocale,
+        },
+        "test-token",
+      );
+    });
   });
 });
