@@ -82,6 +82,7 @@ class TransitionRequest(BaseModel):
     metadata: dict[str, Any] | None = None
     confirmed_text: str | None = Field(default=None, max_length=4000)
     transcript_id: UUID | None = None
+    audio_media_id: UUID | None = None
 
 
 class RegisterMediaRequest(BaseModel):
@@ -745,6 +746,7 @@ async def post_transition(
                 actor,
                 confirmed_text=payload.confirmed_text or "",
                 transcript_id=payload.transcript_id,
+                audio_media_id=payload.audio_media_id,
             )
         else:
             report = await transition_report(

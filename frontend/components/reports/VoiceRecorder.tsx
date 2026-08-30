@@ -121,7 +121,6 @@ export function VoiceRecorder({ value, onChange, startLive, variant = "inline" }
         return;
       }
 
-      onChange(null);
       const pendingLive = startLive
         ? Promise.resolve(startLive(stream)).catch(() => null)
         : Promise.resolve(null);
@@ -175,7 +174,6 @@ export function VoiceRecorder({ value, onChange, startLive, variant = "inline" }
       });
     } catch {
       setSupported(false);
-      onChange(null);
     }
   }
 

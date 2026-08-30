@@ -412,6 +412,7 @@ def test_successful_submission_schedules_intake(
     assert background_tasks.tasks[0].args == (REPORT_ID, "request-submit")
     assert captured["confirmed_text"] == "Confirmed hazard description"
     assert captured["transcript_id"] is None
+    assert captured["audio_media_id"] is None
 
 
 @pytest.mark.parametrize(

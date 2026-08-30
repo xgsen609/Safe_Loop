@@ -147,6 +147,7 @@ describe("ReportFlow", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -240,6 +241,7 @@ describe("ReportFlow", () => {
       }),
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -308,6 +310,7 @@ describe("ReportFlow", () => {
       undefined,
       "draft-id",
       "transcript-id",
+      "audio-id",
     ));
   });
 
@@ -353,6 +356,74 @@ describe("ReportFlow", () => {
       undefined,
       "draft-id",
       undefined,
+      "audio-id",
+    ));
+  });
+
+  it("submits only the most recent voice recording after multiple attempts", async () => {
+    vi.mocked(createReportDraft).mockResolvedValue({ id: "draft-id" });
+    vi.mocked(uploadReportAudio)
+      .mockResolvedValueOnce({ id: "audio-first" } as never)
+      .mockResolvedValueOnce({ id: "audio-final" } as never);
+    vi.mocked(transcribeAudio)
+      .mockResolvedValueOnce({
+        transcript_id: "transcript-first",
+        text: "First attempt",
+        detected_locale: "en-SG",
+        confidence: 0.9,
+        duration_ms: 5000,
+        provider: "stub",
+        model: "stub-v1",
+        provider_ref: "stub-first",
+        latency_ms: 1,
+        meets_confidence_threshold: true,
+      })
+      .mockResolvedValueOnce({
+        transcript_id: "transcript-final",
+        text: "Final attempt",
+        detected_locale: "en-SG",
+        confidence: 0.95,
+        duration_ms: 6000,
+        provider: "stub",
+        model: "stub-v1",
+        provider_ref: "stub-final",
+        latency_ms: 1,
+        meets_confidence_threshold: true,
+      });
+    vi.mocked(fileReport).mockResolvedValue({
+      id: "draft-id",
+      human_ref: "SL-2026-00001",
+      status: reportStatus.submitted,
+    });
+    renderFlow();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "mock voice recording" }));
+    await screen.findByDisplayValue("First attempt");
+    await user.click(screen.getByRole("button", { name: en["report.new.preferVoice"] }));
+    await user.click(screen.getByRole("button", { name: "mock voice recording" }));
+    await screen.findByDisplayValue("Final attempt");
+
+    await user.type(
+      screen.getByLabelText(requiredLabel(en["report.new.location"])),
+      "Level 6",
+    );
+    await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
+    await user.click(screen.getByRole("button", { name: en["report.new.dangerNo"] }));
+    await user.click(screen.getByRole("button", { name: en["report.new.continue"] }));
+    await user.type(
+      screen.getByLabelText(requiredLabel(en["report.new.activity"])),
+      "Material delivery",
+    );
+    await user.click(screen.getByRole("button", { name: en["report.new.submit"] }));
+
+    await waitFor(() => expect(fileReport).toHaveBeenCalledWith(
+      expect.objectContaining({ description_original: "Final attempt" }),
+      "test-token",
+      undefined,
+      "draft-id",
+      "transcript-final",
+      "audio-final",
     ));
   });
 

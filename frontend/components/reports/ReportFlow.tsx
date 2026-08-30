@@ -65,6 +65,7 @@ type LocaleSwitchDraft = {
   draftId: string | null;
   photo: File | null;
   transcriptId: string | null;
+  audioMediaId: string | null;
   missingFields: RequiredReportField[];
   captureMode: CaptureMode;
 };
@@ -99,6 +100,7 @@ export function ReportFlow() {
   const [photo, setPhoto] = useState<File | null>(restoredDraft?.photo ?? null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [transcriptId, setTranscriptId] = useState<string | null>(restoredDraft?.transcriptId ?? null);
+  const [audioMediaId, setAudioMediaId] = useState<string | null>(restoredDraft?.audioMediaId ?? null);
   const [voiceProcessing, setVoiceProcessing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -165,6 +167,7 @@ export function ReportFlow() {
       draftId,
       photo,
       transcriptId,
+      audioMediaId,
       missingFields,
       captureMode,
     };
@@ -277,6 +280,7 @@ export function ReportFlow() {
           : undefined,
         draftId ?? undefined,
         transcriptId ?? undefined,
+        audioMediaId ?? undefined,
       );
       try {
         sessionStorage.setItem(
@@ -433,6 +437,7 @@ export function ReportFlow() {
             reportId={draftId ?? undefined}
             ensureReportId={ensureVoiceDraft}
             onTranscriptIdChange={setTranscriptId}
+            onMediaIdChange={setAudioMediaId}
             onProcessingChange={setVoiceProcessing}
             onChange={(value) => {
               setDescription(value);
@@ -666,6 +671,7 @@ export function ReportFlow() {
               reportId={draftId ?? undefined}
               ensureReportId={ensureVoiceDraft}
               onTranscriptIdChange={setTranscriptId}
+              onMediaIdChange={setAudioMediaId}
               onProcessingChange={setVoiceProcessing}
               onChange={(value) => {
                 setDescription(value);

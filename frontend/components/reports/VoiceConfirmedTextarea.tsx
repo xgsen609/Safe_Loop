@@ -54,7 +54,6 @@ export function VoiceConfirmedTextarea({
   const [audio, setAudio] = useState<File | null>(null);
   const [state, setState] = useState<State>(null);
   const [detectedLocale, setDetectedLocale] = useState<string | null>(null);
-  const [hiddenAfterFailure, setHiddenAfterFailure] = useState(false);
   const [interimText, setInterimText] = useState("");
   const runRef = useRef(0);
 
@@ -127,7 +126,6 @@ export function VoiceConfirmedTextarea({
     } catch {
       if (runRef.current !== run) return;
       setState("failed");
-      setHiddenAfterFailure(true);
       onTranscriptionSettled?.();
     } finally {
       if (runRef.current === run) {
@@ -150,7 +148,7 @@ export function VoiceConfirmedTextarea({
           onChange={(event) => onChange(event.target.value)}
         />
       )}
-      {presentation !== "typed" && !hiddenAfterFailure && (
+      {presentation !== "typed" && (
         <VoiceRecorder
           value={audio}
           onChange={(file, liveResult) => void handleRecording(file, liveResult)}

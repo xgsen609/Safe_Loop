@@ -113,6 +113,7 @@ describe("fileReport", () => {
       undefined,
       undefined,
       "transcript-id",
+      "audio-id",
     );
 
     expect(apiFetch).toHaveBeenNthCalledWith(
@@ -125,6 +126,7 @@ describe("fileReport", () => {
           target: reportStatus.submitted,
           confirmed_text: "Loose edge protection",
           transcript_id: "transcript-id",
+          audio_media_id: "audio-id",
         }),
       },
     );
