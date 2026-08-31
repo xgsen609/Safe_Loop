@@ -1,80 +1,171 @@
 # SafeLoop AI
 
-SafeLoop AI is a bilingual construction-site safety loop for reporters, safety
-reviewers, responsible technicians and crews. It captures an observation, keeps AI
-drafts visibly separate from human decisions, assigns and verifies corrective work,
-shows the reporter what changed, and turns verified cases into grounded crew lessons.
-English and Simplified Chinese are first-class throughout the browser experience.
+SafeLoop AI is a bilingual, human-controlled safety workflow for construction
+sites. It turns a worker's typed or spoken observation into a traceable loop:
+report, review, corrective action, verification, and a reusable crew lesson.
 
-The workflow is deliberately human-controlled: AI cannot approve, assign, reject,
-escalate, publish or close a case, and only a human reviewer can verify closure.
+English and Simplified Chinese are first-class throughout the browser
+experience. AI helps structure reports and draft learning content, but people
+remain accountable for every safety decision.
 
-## Live Singapore demo
+## Live demo
 
-Open [safeloop-ai-demo.vercel.app](https://safeloop-ai-demo.vercel.app/en) for
-English or [the Mandarin route](https://safeloop-ai-demo.vercel.app/zh-CN). The
-API is deployed at
-[safeloop-api-s55z7xniza-as.a.run.app](https://safeloop-api-s55z7xniza-as.a.run.app/health).
-The demo uses only synthetic people and safety records; the six sign-in accounts
-below work on both the hosted and local demo.
+[safe-loop-xiyan.vercel.app/en](https://safe-loop-xiyan.vercel.app/en/)
 
-## See the full demo in three commands
+The hosted demo contains synthetic people and safety records only. Use any of
+the accounts below with password `SafeLoopDemo!2026`.
 
-Install Docker Desktop, Supabase CLI 2.115.0, Python 3.12 and Node.js 22 first. Then,
-from PowerShell:
+| Experience | Email |
+| --- | --- |
+| Reporter | `reporter-en@example.test` |
+| Safety reviewer | `reviewer@example.test` |
+| Responsible technician | `responsible@example.test` |
+| Crew member | `crew@example.test` |
+
+## How the loop works
+
+```mermaid
+flowchart LR
+    A[Report by text, photo, or voice] --> B[AI structures a draft]
+    B --> C{Human review}
+    C -->|Request details| A
+    C -->|Assign action| D[Technician completes work]
+    D --> E{Human verification}
+    E -->|Rework required| D
+    E -->|Fix verified| F[AI drafts a bilingual lesson]
+    F --> G{Reviewer approval}
+    G --> H[Crew briefing, QR notice, and quiz]
+```
+
+### For reporters
+
+- File a safety observation in English or Simplified Chinese.
+- Type the report or record voice with an editable transcript and typed fallback.
+- Attach site photos and answer targeted clarification questions.
+- Follow the case timeline and see what changed after closure.
+
+### For reviewers and technicians
+
+- Triage a priority-sorted review queue and escalate urgent cases.
+- Approve, reject, or request more information with an auditable reason.
+- Assign corrective work, owners, and due dates.
+- Submit completion evidence, return inadequate work, and verify closure.
+- Track overdue actions, alert acknowledgement, and operational metrics.
+
+### For administrators and crews
+
+- Upload, approve, retire, and search controlled PDF or DOCX procedures.
+- Ground AI drafts in approved document revisions with visible citations.
+- Review bilingual toolbox briefings and three-question quizzes before publishing.
+- Download a noticeboard QR code or A4 sheet for each published briefing.
+- Let crew members revisit active lessons and record quiz completion.
+
+## Human-control guarantees
+
+SafeLoop separates assistance from authority:
+
+- AI may extract facts, ask clarifying questions, translate content, and draft
+  reports or lessons.
+- AI cannot approve, reject, assign, escalate, publish, or close a case.
+- Only a human reviewer can accept corrective evidence and verify closure.
+- AI-generated content stays visibly labelled until a reviewer approves it.
+- Role-based access and database row-level security protect workflow boundaries.
+- The stub AI provider keeps local development and automated tests deterministic.
+
+## Run the complete demo locally
+
+Install these prerequisites first:
+
+- Docker Desktop
+- Supabase CLI 2.115.0
+- Python 3.12
+- Node.js 22
+
+Then run:
+
+```bash
+git clone https://github.com/xgsen609/Safe_Loop.git
+cd Safe_Loop
+bash scripts/demo.sh
+```
+
+On Windows PowerShell, replace the last command with:
 
 ```powershell
-git clone https://github.com/ngzhiwei517/Safe_Loop.git
-cd Safe_Loop
 pwsh -File scripts/demo.ps1
 ```
 
-On macOS or Linux, use `bash scripts/demo.sh` for the third command. The script starts
-the local Supabase stack, applies every migration, loads the verified 40-report demo,
-and starts both applications. Open <http://127.0.0.1:3000/en> or
-<http://127.0.0.1:3000/zh-CN>.
+The demo script installs dependencies, starts Supabase, applies every migration,
+loads 40 synthetic reports, and starts the API and web app. Open
+<http://127.0.0.1:3000/en> or <http://127.0.0.1:3000/zh-CN>.
 
-All six demo accounts use password `SafeLoopDemo!2026`:
+> [!CAUTION]
+> The public credentials and `supabase/demo_seed.sql` are for isolated demo
+> environments only. Never load the demo seed into a project containing real
+> people or safety reports.
 
-| Role | Email |
+## Technology
+
+| Layer | Runtime and main components |
 | --- | --- |
-| English reporter | `reporter-en@example.test` |
-| Mandarin reporter | `reporter-zh@example.test` |
-| Reviewer | `reviewer@example.test` |
-| Responsible technician | `responsible@example.test` |
-| Crew | `crew@example.test` |
-| Administrator | `admin@example.test` |
+| Web app | Next.js 15, React 19, TypeScript, `next-intl` |
+| API | Python 3.12, FastAPI, Pydantic, asyncpg |
+| Workflow AI | LangGraph, Google Gen AI, deterministic local stub |
+| Data platform | Supabase, PostgreSQL 17, pgvector, Storage, Auth |
+| Production | Vercel, Google Cloud Run, Supabase Singapore region |
 
-These public credentials belong only in an isolated local/demo project. Never run
-`supabase/demo_seed.sql` in a project containing real people or reports.
+Pinned versions are in `backend/requirements.txt` and
+`frontend/package-lock.json`.
 
-## Stack
+## Project structure
 
-| Layer | Pinned runtime or package |
-| --- | --- |
-| Backend | Python 3.12, FastAPI 0.115.6, asyncpg 0.30.0 |
-| Workflow AI | LangGraph 1.2.10, Google Gen AI 2.19.0 |
-| Frontend | Node.js 22, Next.js 15.5.21, React 19.0.0 |
-| Local platform | Supabase CLI 2.115.0, PostgreSQL 17, pgvector |
-| Production regions | Supabase `ap-southeast-1`, Cloud Run `asia-southeast1`, Vercel `sin1` |
-
-Exact Python and npm dependency versions live in
-`backend/requirements.txt` and `frontend/package-lock.json`.
+```text
+Safe_Loop/
+├── backend/
+│   ├── app/ai/          # intake, lesson, transcription, and evaluation flows
+│   ├── app/api/         # FastAPI routes
+│   ├── app/domain/      # roles, statuses, and allowed transitions
+│   ├── app/rag/         # document chunking, embeddings, and retrieval
+│   └── app/services/    # workflow and persistence services
+├── frontend/
+│   ├── app/[locale]/    # bilingual Next.js routes
+│   ├── components/      # role-specific workflow UI
+│   ├── lib/             # API, auth, and generated state-machine contract
+│   └── messages/        # English and Simplified Chinese copy
+├── supabase/
+│   ├── migrations/      # schema, policies, storage, and workflow migrations
+│   ├── seed.sql         # stable base profiles
+│   └── demo_seed.sql    # synthetic end-to-end demo dataset
+├── scripts/             # local demo and seed helpers
+└── docs/                # deployment, operations, and terminology
+```
 
 ## Manual development setup
 
-Start and migrate the local database:
+### 1. Start the local platform
 
-```powershell
+```bash
 supabase start
 supabase db reset --local
 ```
 
-Create `backend/.env` from `backend/.env.example` and `frontend/.env.local` from
-`frontend/.env.example`. Use the values printed by `supabase status -o env`; do not
-commit either environment file.
+Copy `backend/.env.example` to `backend/.env` and
+`frontend/.env.example` to `frontend/.env.local`. Fill them with the values from
+`supabase status -o env`. Do not commit either environment file.
 
-Run the backend:
+### 2. Start the API
+
+macOS or Linux:
+
+```bash
+cd backend
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m app.doctor
+.venv/bin/python -m uvicorn app.main:app --reload
+```
+
+Windows PowerShell:
 
 ```powershell
 cd backend
@@ -84,32 +175,35 @@ python -m venv .venv
 .venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 
-Run the frontend in a second terminal:
+The OpenAPI documentation is available at <http://127.0.0.1:8000/docs>.
 
-```powershell
+### 3. Start the web app
+
+In a second terminal:
+
+```bash
 cd frontend
 npm ci
 npm run dev
 ```
 
-The API documentation is at <http://127.0.0.1:8000/docs>. Debug headers work only
-when both `APP_ENV=local` and `ALLOW_DEBUG_AUTH=true`; normal browser use always uses
-Supabase JWT authentication.
+Normal browser use authenticates with Supabase JWTs. Debug authentication headers
+work only when both `APP_ENV=local` and `ALLOW_DEBUG_AUTH=true`.
 
 ## Verification
 
-Backend:
+Backend checks:
 
-```powershell
+```bash
 cd backend
 python -m ruff check .
 python -m mypy app --strict
 python -m pytest
 ```
 
-Frontend:
+Frontend checks:
 
-```powershell
+```bash
 cd frontend
 npm ci
 npm run build
@@ -117,56 +211,42 @@ npm run tsc
 npm run test
 ```
 
-Production builds use the committed `frontend/lib/stateMachine.ts` contract and do
-not require a running backend. When backend transitions change, start the backend,
-run `npm run generate-state-machine` from `frontend`, then review and commit the
-generated contract before building or deploying.
+Database integration tests run when `TEST_DATABASE_URL` is set. The Playwright
+suite refuses non-loopback Supabase URLs and runs with `AI_PROVIDER=stub`. CI
+applies all migrations, exercises the complete English and Mandarin browser flow,
+and loads the demo seed twice to prove that it is rerunnable.
 
-The database integration tests run when `TEST_DATABASE_URL` is set. The Playwright
-suite refuses a non-loopback Supabase URL, runs with `AI_PROVIDER=stub`, and exercises
-the full English and Mandarin workflow. CI starts an isolated Supabase stack, applies
-all migrations, runs the browser loop, and loads the demo seed twice to prove it is
-rerunnable.
-
-## Database and demo data
-
-Tracked migrations are in `supabase/migrations/`; `supabase/seed.sql` creates stable
-base profiles, and `supabase/demo_seed.sql` adds 40 realistic reports across every
-status, two approved procedures, rework histories, published briefings and quiz
-responses. To add the demo to an already-running disposable database:
-
-```powershell
-$env:DATABASE_URL = "postgresql://..."
-python scripts/apply_demo_seed.py
-```
-
-The script never prints the database URL and aborts unless the required demo counts
-are present.
+The frontend builds against the committed `frontend/lib/stateMachine.ts` contract
+without requiring a live backend. After changing backend transitions, start the
+API, run `npm run generate-state-machine` in `frontend`, and review the generated
+contract before committing it.
 
 ## Deployment and operations
 
-The Singapore-only topology, environment contract, GitHub production configuration
-and deployment procedure are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Rollback,
-key rotation and AI-provider outage procedures are in [docs/RUNBOOK.md](docs/RUNBOOK.md).
+Production is constrained to Singapore: Supabase in `ap-southeast-1`, Cloud Run in
+`asia-southeast1`, and Vercel in `sin1`. The manually dispatched **Deploy
+Singapore** workflow applies database migrations, deploys the API, and then deploys
+the frontend. It rejects any configured runtime region outside Singapore.
 
-Production deployment is an explicit `Deploy Singapore` workflow dispatch. It applies
-database migrations first, deploys the backend container to Cloud Run, then deploys
-the frontend to Vercel. The workflow refuses any configured runtime region other than
-Singapore. The current hosted demo was deployed and smoke-tested in both languages on
-23 August 2026.
+- [Deployment guide](docs/DEPLOYMENT.md)
+- [Production runbook](docs/RUNBOOK.md)
+- [Safety glossary](docs/GLOSSARY.md)
 
-## Common startup failures
+The runbook covers rollback, key rotation, first-response checks, and degraded AI
+or transcription providers. Core reporting and human decision paths remain
+available when AI features are unavailable.
 
-| Symptom | Fix |
+## Common startup issues
+
+| Symptom | Resolution |
 | --- | --- |
 | `supabase` is not recognised | Install Supabase CLI 2.115.0 and restart the terminal. |
-| Supabase cannot start | Start Docker Desktop and wait until its engine is ready. |
-| Python environment creation fails | Install 64-bit Python 3.12 and enable its launcher/PATH entry. |
-| `npm` is not recognised | Install Node.js 22 or run the checked build in GitHub Actions. |
+| Supabase cannot start | Start Docker Desktop and wait for its engine to become ready. |
+| Python environment creation fails | Install 64-bit Python 3.12 and enable its launcher or PATH entry. |
+| `npm` is not recognised | Install Node.js 22. |
 | Doctor reports `DATABASE_URL` | Copy the local `DB_URL` or hosted session-pooler URL into `backend/.env`. |
-| Doctor reports database reachability | Check the host, port, VPN and Supabase network restrictions. |
-| Doctor reports authentication | Re-copy the database password and percent-encode special URI characters. |
+| Doctor reports database reachability | Check the host, port, VPN, and Supabase network restrictions. |
 | Doctor reports missing schema | Run `supabase db reset --local` or the tracked production migration workflow. |
-| Sign-in fails for a demo user | Apply `supabase/demo_seed.sql`; base `seed.sql` identities intentionally have no password. |
-| Deep health reports storage | Create both private buckets and set the Supabase service-role key. |
-| Deep health reports provider | Confirm Vertex AI is enabled in `asia-southeast1`; follow the outage runbook. |
+| Demo sign-in fails | Apply `supabase/demo_seed.sql`; the base seed identities intentionally have no password. |
+| Deep health reports storage | Create the private buckets and set the Supabase service-role key. |
+| Deep health reports provider | Confirm Vertex AI is enabled in `asia-southeast1` and follow the runbook. |
