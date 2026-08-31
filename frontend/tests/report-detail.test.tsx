@@ -115,6 +115,7 @@ const timeline = [
     event: "submit",
     actor_type: "human" as const,
     actor_role: "reporter" as const,
+    actor_name: "Worker Tan",
     source: reportStatus.draft,
     target: reportStatus.submitted,
     reason: null,
@@ -297,7 +298,12 @@ describe("ReportDetail", () => {
     vi.mocked(getReport).mockResolvedValue(reportWith([]));
     renderDetail();
 
-    expect(await screen.findByText(en["report.detail.waiting.under_review"])).toBeTruthy();
+    expect(await screen.findByText(en["workflow.next.under_review"])).toBeTruthy();
+    expect(
+      screen.getByText(
+        en["workflow.next.title"].replace("{owner}", en["workflow.owner.reviewer"]),
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(en["report.detail.actions"])).toBeNull();
     expect(screen.queryByRole("button", { name: en["action.reject"] })).toBeNull();
     expect(screen.getByRole("link", { name: en["app.myReports"] }).getAttribute("href"))

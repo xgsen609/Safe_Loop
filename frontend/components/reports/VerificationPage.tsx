@@ -38,6 +38,7 @@ import { Field } from "../ui/Field";
 import { LanguageSwitch } from "../ui/LanguageSwitch";
 import { PhotoStrip } from "../ui/PhotoStrip";
 import { StatusChip } from "../ui/StatusChip";
+import { WorkflowNextStep } from "./WorkflowNextStep";
 
 const checklistItems = [
   { id: "hazard_removed", message: "verification.checklist.hazardRemoved" },
@@ -515,11 +516,7 @@ export function VerificationPage({
             )}
           </Card>
         ) : (
-          <Banner
-            tone="info"
-            title={t("verification.waitingTitle")}
-            detail={t("verification.waitingDetail")}
-          />
+          <WorkflowNextStep report={report} locale={locale} audience="reviewer" />
         )}
       </div>
     </main>

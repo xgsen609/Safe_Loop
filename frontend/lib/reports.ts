@@ -189,6 +189,13 @@ export type ReportDetail = {
   current_action: CorrectiveActionDetail | null;
   verifications: VerificationRecord[];
   closure_receipt: ClosureReceipt | null;
+  current_briefing?: {
+    id: string;
+    version: number;
+    status: "draft" | "published";
+    created_at: string;
+    approved_at: string | null;
+  } | null;
   available_transitions: AvailableTransition[];
 };
 
@@ -242,6 +249,7 @@ export type ReportListFilters = {
   q?: string;
   cursor?: string;
   limit?: number;
+  locale?: Locale;
 };
 
 export type TimelineEntry = {
@@ -249,6 +257,7 @@ export type TimelineEntry = {
   event: string;
   actor_type: "human" | "ai" | "system";
   actor_role: "reporter" | "reviewer" | "responsible" | "crew" | "admin" | null;
+  actor_name?: string | null;
   source: ReportStatus | null;
   target: ReportStatus | null;
   reason: string | null;
@@ -297,8 +306,13 @@ export function createReportDraft(
   });
 }
 
-export function getReport(reportId: string, accessToken: string): Promise<ReportDetail> {
-  return apiFetch<ReportDetail>(`/reports/${reportId}`, accessToken);
+export function getReport(
+  reportId: string,
+  accessToken: string,
+  locale?: Locale,
+): Promise<ReportDetail> {
+  const query = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+  return apiFetch<ReportDetail>(`/reports/${reportId}${query}`, accessToken);
 }
 
 export function listReports(filters: ReportListFilters, accessToken: string): Promise<ReportListPage> {
@@ -310,6 +324,7 @@ export function listReports(filters: ReportListFilters, accessToken: string): Pr
   if (filters.q?.trim()) params.set("q", filters.q.trim());
   if (filters.cursor) params.set("cursor", filters.cursor);
   if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.locale) params.set("locale", filters.locale);
   const query = params.toString();
   return apiFetch<ReportListPage>(`/reports${query ? `?${query}` : ""}`, accessToken);
 }
@@ -371,4 +386,28 @@ export function verifyReport(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function startLessonDraft(
+  reportId: string,
+  accessToken: string,
+): Promise<{ report_id: string; status: "queued" | "running" }> {
+  return apiFetch(`/reports/${reportId}/lesson-draft`, accessToken, {
+    method: "POST",
+  });
+}
+
+export type LessonDraftRunStatus = {
+  report_id: string;
+  status: "idle" | "queued" | "running" | "succeeded" | "failed";
+  started_at: string | null;
+  finished_at: string | null;
+  briefing_id: string | null;
+};
+
+export function getLessonDraftStatus(
+  reportId: string,
+  accessToken: string,
+): Promise<LessonDraftRunStatus> {
+  return apiFetch(`/reports/${reportId}/lesson-draft/status`, accessToken);
 }

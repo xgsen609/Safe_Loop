@@ -15,6 +15,10 @@ import {
 } from "../../lib/locales";
 import { isAudioMimeType, isImageMimeType } from "../../lib/media";
 import {
+  listTechnicians,
+  type Technician,
+} from "../../lib/profiles";
+import {
   getReport,
   getTimeline,
   reviewReport,
@@ -40,6 +44,7 @@ import { LanguageSwitch } from "../ui/LanguageSwitch";
 import { PhotoStrip } from "../ui/PhotoStrip";
 import { StatusChip } from "../ui/StatusChip";
 import { Timeline } from "../ui/Timeline";
+import { WorkflowNextStep } from "./WorkflowNextStep";
 
 type ReviewTransition = AvailableTransition & { review_decision: ReviewDecision };
 
@@ -153,6 +158,9 @@ export function ReviewDecisionPage({
   const [correctionReason, setCorrectionReason] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [techniciansLoading, setTechniciansLoading] = useState(true);
+  const [techniciansLoadFailed, setTechniciansLoadFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmingApproval, setConfirmingApproval] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -164,12 +172,28 @@ export function ReviewDecisionPage({
     } = await createClient().auth.getSession();
     if (!session) throw new Error("session_required");
     const [nextReport, nextTimeline] = await Promise.all([
-      getReport(id, session.access_token),
+      getReport(id, session.access_token, locale),
       getTimeline(id, session.access_token),
     ]);
     setReport(nextReport);
     setTimeline(nextTimeline);
-  }, [id]);
+  }, [id, locale]);
+
+  const loadTechnicianChoices = useCallback(async () => {
+    setTechniciansLoading(true);
+    setTechniciansLoadFailed(false);
+    try {
+      const {
+        data: { session },
+      } = await createClient().auth.getSession();
+      if (!session) throw new Error("session_required");
+      setTechnicians(await listTechnicians(session.access_token));
+    } catch {
+      setTechniciansLoadFailed(true);
+    } finally {
+      setTechniciansLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -183,10 +207,11 @@ export function ReviewDecisionPage({
       }
     }
     void initialLoad();
+    void loadTechnicianChoices();
     return () => {
       mounted = false;
     };
-  }, [load]);
+  }, [load, loadTechnicianChoices]);
 
   function choose(transition: ReviewTransition) {
     const draft = report?.latest_draft;
@@ -307,8 +332,9 @@ export function ReviewDecisionPage({
   const timelineEvents = timeline.map((entry) => ({
     id: entry.id,
     title: t(`timeline.event.${entry.event}`),
-    detail: t("timeline.actorAt", {
+    detail: t(entry.actor_name ? "timeline.actorNamedAt" : "timeline.actorAt", {
       actor: t(actorKey(entry)),
+      name: entry.actor_name ?? "",
       time: formatDateTime(entry.created_at, locale),
     }),
     note: entry.reason
@@ -320,6 +346,9 @@ export function ReviewDecisionPage({
     if (!value) return t("review.detail.diffNotSet");
     return diff.field === "urgency" ? t(`urgency.${value}`) : value;
   };
+  const selectedTechnician = technicians.find(
+    (technician) => technician.id === assigneeId,
+  );
 
   return (
     <main className="mx-auto min-h-screen max-w-[430px] bg-bg px-5 pb-10 text-ink">
@@ -404,18 +433,24 @@ export function ReviewDecisionPage({
         <Card className="space-y-4">
           <section>
             <h2 className="text-xl font-bold">
-              {t("report.detail.originalText")}
+              {t(
+                locale === "zh-CN"
+                  ? "review.detail.localizedReport"
+                  : "report.detail.originalText",
+              )}
             </h2>
             <p className="mt-2 whitespace-pre-wrap text-base leading-7">
               {report.description_original}
             </p>
-            <p className="mt-2 text-sm text-inkMuted">
-              {t("report.detail.originalLanguage", {
-                language: t(`locale.${report.lang_original}`),
-              })}
-            </p>
+            {locale !== "zh-CN" && (
+              <p className="mt-2 text-sm text-inkMuted">
+                {t("report.detail.originalLanguage", {
+                  language: t(`locale.${report.lang_original}`),
+                })}
+              </p>
+            )}
           </section>
-          {report.description_en?.trim() && (
+          {locale !== "zh-CN" && report.description_en?.trim() && (
             <section className="border-t border-border pt-4">
               <h2 className="text-xl font-bold">
                 {t("report.detail.englishText")}
@@ -460,6 +495,27 @@ export function ReviewDecisionPage({
             )}
           </dl>
         </Card>
+
+        {report.current_action && (
+          <Card className="space-y-2 border-successStrong bg-successSurface">
+            <p className="text-sm font-bold text-successStrong">
+              {t("review.detail.assignedTo")}
+            </p>
+            <p className="text-xl font-bold text-ink">
+              {report.current_action.assignee_name}
+            </p>
+            <p className="text-sm text-inkMuted">
+              {t("review.detail.assignedAction", {
+                action: report.current_action.action_text,
+              })}
+            </p>
+            <p className="text-sm text-inkMuted">
+              {t("review.detail.assignedDue", {
+                dueAt: formatDateTime(report.current_action.due_at, locale),
+              })}
+            </p>
+          </Card>
+        )}
 
         {report.latest_draft && (
           <AiBlock
@@ -594,11 +650,7 @@ export function ReviewDecisionPage({
         )}
 
         {decisions.length === 0 ? (
-          <Banner
-            tone="info"
-            title={t("review.detail.noActionsTitle")}
-            detail={t("review.detail.noActionsDetail")}
-          />
+          <WorkflowNextStep report={report} locale={locale} audience="reviewer" />
         ) : active ? (
           <Card className="space-y-4">
             <div>
@@ -695,14 +747,36 @@ export function ReviewDecisionPage({
                   <p className="text-sm text-inkMuted">
                     {t("review.detail.assignmentHelp")}
                   </p>
-                  <Field
-                    label={t("review.detail.assigneeId")}
-                    value={assigneeId}
-                    onChange={(event) => {
-                      setAssigneeId(event.target.value);
-                      setConfirmingApproval(false);
-                    }}
-                  />
+                  <label className="block text-sm font-bold text-inkMuted">
+                    <span>{t("review.detail.assignee")}</span>
+                    <select
+                      className="mt-1 min-h-[52px] w-full rounded-control border border-border bg-surface px-4 text-base text-ink outline-none focus:border-primaryStrong focus:ring-2 focus:ring-primaryTint disabled:opacity-60"
+                      disabled={techniciansLoading || techniciansLoadFailed}
+                      value={assigneeId}
+                      onChange={(event) => {
+                        setAssigneeId(event.target.value);
+                        setConfirmingApproval(false);
+                      }}
+                    >
+                      <option value="">
+                        {techniciansLoading
+                          ? t("review.detail.assigneeLoading")
+                          : t("review.detail.assigneePlaceholder")}
+                      </option>
+                      {technicians.map((technician) => (
+                        <option key={technician.id} value={technician.id}>
+                          {technician.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {techniciansLoadFailed && (
+                    <Banner
+                      tone="warning"
+                      title={t("review.detail.assigneeLoadFailedTitle")}
+                      detail={t("review.detail.assigneeLoadFailedDetail")}
+                    />
+                  )}
                   <Field
                     label={t("review.detail.dueAt")}
                     type="datetime-local"
@@ -726,6 +800,13 @@ export function ReviewDecisionPage({
                   <p className="mt-1 text-sm text-inkMuted">
                     {t("review.detail.diffHelp")}
                   </p>
+                  {selectedTechnician && (
+                    <p className="mt-3 rounded-control bg-surface p-3 text-base font-bold text-ink">
+                      {t("review.detail.confirmAssignee", {
+                        name: selectedTechnician.display_name,
+                      })}
+                    </p>
+                  )}
                   {correctionDiffs.length === 0 ? (
                     <p className="mt-3 text-base font-bold text-ink">
                       {t("review.detail.diffNoChanges")}

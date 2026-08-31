@@ -51,7 +51,7 @@ export function ReporterReportsPage({
       } = await createClient().auth.getSession();
       if (!session) throw new Error("session_required");
       const page = await listReports(
-        { cursor, limit: 25 },
+        { cursor, limit: 25, locale },
         session.access_token,
       );
       setItems((current) => (append ? [...current, ...page.items] : page.items));
@@ -61,7 +61,7 @@ export function ReporterReportsPage({
     } finally {
       append ? setLoadingMore(false) : setLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     void load();

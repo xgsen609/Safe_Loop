@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import json
 import logging
 import re
@@ -34,6 +36,57 @@ logger = logging.getLogger(__name__)
 class _LoadedLesson:
     state: LessonState
     retrieval_query: str
+
+
+@dataclass(frozen=True)
+class LessonRunStatus:
+    """Expose one process-local lesson run without leaking provider details."""
+
+    phase: str
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+_lesson_runs: dict[UUID, LessonRunStatus] = {}
+_lesson_runs_lock = asyncio.Lock()
+
+
+async def queue_lesson_run(report_id: UUID) -> tuple[bool, LessonRunStatus]:
+    """Claim one lesson run so repeated reviewer clicks stay idempotent."""
+    async with _lesson_runs_lock:
+        existing = _lesson_runs.get(report_id)
+        if existing is not None and existing.phase in {"queued", "running"}:
+            return False, existing
+        status = LessonRunStatus(
+            phase="queued",
+            started_at=datetime.now(UTC).isoformat(),
+        )
+        _lesson_runs[report_id] = status
+        return True, status
+
+
+async def get_lesson_run_status(report_id: UUID) -> LessonRunStatus:
+    """Return the latest observable state for the current backend process."""
+    async with _lesson_runs_lock:
+        return _lesson_runs.get(report_id, LessonRunStatus(phase="idle"))
+
+
+async def _record_lesson_run(
+    report_id: UUID,
+    phase: str,
+    *,
+    started_at: str | None = None,
+    finished: bool = False,
+) -> LessonRunStatus:
+    async with _lesson_runs_lock:
+        previous = _lesson_runs.get(report_id)
+        status = LessonRunStatus(
+            phase=phase,
+            started_at=started_at or (previous.started_at if previous else None),
+            finished_at=datetime.now(UTC).isoformat() if finished else None,
+        )
+        _lesson_runs[report_id] = status
+        return status
 
 
 def _json_value(value: object) -> JsonValue:
@@ -354,6 +407,11 @@ async def _persist_lesson(
 async def run_lesson(report_id: UUID, request_id: str | None = None) -> bool:
     """Run after closure and fail closed without advancing an incomplete lesson."""
     started = perf_counter()
+    run_status = await _record_lesson_run(
+        report_id,
+        "running",
+        started_at=datetime.now(UTC).isoformat(),
+    )
     provider_hint = get_settings().ai_provider.strip().lower() or "unconfigured"
     with bind_request_id(request_id) as run_request_id:
         with capture_ai_usage() as usage:
@@ -372,6 +430,12 @@ async def run_lesson(report_id: UUID, request_id: str | None = None) -> bool:
                         **usage.snapshot().as_log_fields(
                             fallback_provider=provider_hint
                         ),
+                    )
+                    await _record_lesson_run(
+                        report_id,
+                        "failed",
+                        started_at=run_status.started_at,
+                        finished=True,
                     )
                     return False
                 loaded = _LoadedLesson(
@@ -396,6 +460,12 @@ async def run_lesson(report_id: UUID, request_id: str | None = None) -> bool:
                         fallback_provider=provider_hint
                     ),
                 )
+                await _record_lesson_run(
+                    report_id,
+                    "succeeded" if persisted else "failed",
+                    started_at=run_status.started_at,
+                    finished=True,
+                )
                 return persisted
             except Exception as error:
                 track_exception(
@@ -410,5 +480,11 @@ async def run_lesson(report_id: UUID, request_id: str | None = None) -> bool:
                     **usage.snapshot().as_log_fields(
                         fallback_provider=provider_hint
                     ),
+                )
+                await _record_lesson_run(
+                    report_id,
+                    "failed",
+                    started_at=run_status.started_at,
+                    finished=True,
                 )
                 return False

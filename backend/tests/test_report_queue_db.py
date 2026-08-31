@@ -84,7 +84,9 @@ def test_reviewer_queue_is_under_one_second_with_5000_reports(
                 query=f"PERF-{prefix}",
                 cursor=page.next_cursor,
             )
-            index_name = await conn.fetchval("select to_regclass('reports_queue_status_order')::text")
+            index_name = await conn.fetchval(
+                "select to_regclass('reports_queue_status_newest_order')::text"
+            )
             return elapsed, page.rows[0]["human_ref"], second_page.rows[0]["human_ref"], index_name
         finally:
             await transaction.rollback()
@@ -92,7 +94,7 @@ def test_reviewer_queue_is_under_one_second_with_5000_reports(
 
     elapsed, first_human_ref, second_page_human_ref, index_name = asyncio.run(exercise())
 
-    assert index_name == "reports_queue_status_order"
-    assert first_human_ref.endswith("05000")
+    assert index_name == "reports_queue_status_newest_order"
+    assert first_human_ref.endswith("00004")
     assert second_page_human_ref != first_human_ref
     assert elapsed < 1.0

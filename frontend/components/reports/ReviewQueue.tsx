@@ -57,9 +57,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
   const t = useTranslations();
   const locale = isLocale(requestedLocale) ? requestedLocale : defaultLocale;
   const navItems = useOperationsNavigation(locale);
-  const [statusFilter, setStatusFilter] = useState<ReportStatus | "">(
-    reportStatus.under_review,
-  );
+  const [statusFilter, setStatusFilter] = useState<ReportStatus | "">("");
   const [urgencyFilter, setUrgencyFilter] = useState<Urgency | "">("");
   const [needsManualTriage, setNeedsManualTriage] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -88,6 +86,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
             needsManualTriage,
             q: searchQuery || undefined,
             cursor,
+            locale,
           },
           session.access_token,
         );
@@ -100,7 +99,7 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
         append ? setLoadingMore(false) : setLoading(false);
       }
     },
-    [needsManualTriage, searchQuery, statusFilter, urgencyFilter],
+    [locale, needsManualTriage, searchQuery, statusFilter, urgencyFilter],
   );
 
   useEffect(() => {
@@ -109,7 +108,12 @@ export function ReviewQueue({ requestedLocale }: { requestedLocale: string }) {
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSearchQuery(searchInput.trim());
+    const query = searchInput.trim();
+    if (query) {
+      setStatusFilter("");
+      setNeedsManualTriage(false);
+    }
+    setSearchQuery(query);
   }
 
   const languageSwitch = (
