@@ -85,6 +85,24 @@ async def main() -> int:
                 return fail("FAIL seeded profiles: run supabase/seed.sql.")
         except Exception:
             return fail("FAIL seeded profiles: run supabase/seed.sql.")
+        try:
+            missing_embeddings = await conn.fetchval(
+                """
+                select count(*)
+                from document_chunks chunks
+                join documents document on document.id = chunks.document_id
+                where document.is_approved = true
+                  and document.effective_from <= now()
+                  and chunks.embedding is null
+                """
+            )
+            if missing_embeddings:
+                return fail(
+                    "FAIL RAG embeddings: run "
+                    "'cd backend && .venv/bin/python -m app.rag.backfill'."
+                )
+        except Exception:
+            return fail("FAIL RAG embeddings: inspect the document corpus schema.")
     finally:
         await conn.close()
     print("PASS SafeLoop environment is ready.")

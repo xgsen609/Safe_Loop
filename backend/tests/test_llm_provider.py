@@ -183,6 +183,9 @@ def test_structured_completion_is_revalidated_and_logs_tokens_and_cost(
     assert model == "gemini-test"
     assert "Loose guardrail" in prompt
     assert isinstance(request_config, types.GenerateContentConfig)
+    assert request_config.temperature == 0.0
+    assert request_config.candidate_count == 1
+    assert isinstance(request_config.seed, int)
     assert request_config.response_mime_type == "application/json"
     assert request_config.response_schema is CompletionSchema
     record = next(
@@ -191,6 +194,26 @@ def test_structured_completion_is_revalidated_and_logs_tokens_and_cost(
     assert record.tokens_in == 120
     assert record.tokens_out == 35
     assert record.estimated_cost_usd == 0.00019
+
+
+def test_identical_completion_inputs_use_the_same_seed() -> None:
+    models = FakeModels(
+        generate_results=[
+            FakeGenerateResponse(
+                '{"observation":"Loose guardrail","confidence":0.9}'
+            )
+        ]
+    )
+    provider = provider_with(models)
+
+    complete(provider)
+    complete(provider)
+
+    first_config = models.generate_calls[0][2]
+    second_config = models.generate_calls[1][2]
+    assert isinstance(first_config, types.GenerateContentConfig)
+    assert isinstance(second_config, types.GenerateContentConfig)
+    assert first_config.seed == second_config.seed
 
 
 def test_health_uses_model_metadata_on_the_configured_regional_client() -> None:

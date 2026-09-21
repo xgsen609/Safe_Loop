@@ -66,6 +66,13 @@ try {
 
     & $python scripts\apply_demo_seed.py
     if ($LASTEXITCODE -ne 0) { throw "Demo data did not load." }
+    Push-Location backend
+    try {
+        & .\.venv\Scripts\python.exe -m app.rag.backfill
+        if ($LASTEXITCODE -ne 0) { throw "RAG embedding backfill failed." }
+    } finally {
+        Pop-Location
+    }
 
     $backendStart = @{
         FilePath = $python

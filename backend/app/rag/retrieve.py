@@ -12,8 +12,6 @@ from app.rag.embeddings import embed_texts_batched, vector_literal
 
 DEFAULT_TOP_K = 6
 DEFAULT_SIMILARITY_FLOOR = 0.35
-IVFFLAT_PROBES = 10
-IVFFLAT_MAX_PROBES = 100
 
 
 @dataclass(frozen=True)
@@ -50,31 +48,38 @@ async def retrieve_chunks(
     literal = vector_literal(query_vector)
     async with connection() as conn:
         async with conn.transaction():
-            await conn.execute(
-                """
-                select set_config('ivfflat.probes', $1, true),
-                       set_config('ivfflat.iterative_scan', 'relaxed_order', true),
-                       set_config('ivfflat.max_probes', $2, true)
-                """,
-                str(IVFFLAT_PROBES),
-                str(IVFFLAT_MAX_PROBES),
-            )
+            # Safety corpora are deliberately small. Force an exact scan so the
+            # top-k membership cannot change at an approximate-index boundary.
+            await conn.execute("set local enable_indexscan = off")
+            await conn.execute("set local enable_bitmapscan = off")
             rows = await conn.fetch(
                 """
-                select dc.content,
-                       d.id as document_id,
-                       d.doc_ref,
-                       d.revision,
-                       dc.section,
-                       dc.page,
-                       1 - (dc.embedding <=> $1::vector(1536)) as similarity
-                from document_chunks dc
-                join documents d on d.id = dc.document_id
-                where d.is_approved = true
-                  and d.effective_from <= now()
-                  and dc.embedding is not null
-                  and 1 - (dc.embedding <=> $1::vector(1536)) >= $2
-                order by dc.embedding <=> $1::vector(1536), dc.id
+                with ranked as materialized (
+                  select dc.id as chunk_id,
+                         dc.chunk_index,
+                         dc.content,
+                         d.id as document_id,
+                         d.doc_ref,
+                         d.revision,
+                         dc.section,
+                         dc.page,
+                         dc.embedding <=> $1::vector(1536) as distance
+                  from document_chunks dc
+                  join documents d on d.id = dc.document_id
+                  where d.is_approved = true
+                    and d.effective_from <= now()
+                    and dc.embedding is not null
+                )
+                select content,
+                       document_id,
+                       doc_ref,
+                       revision,
+                       section,
+                       page,
+                       1 - distance as similarity
+                from ranked
+                where 1 - distance >= $2
+                order by distance, doc_ref, revision, chunk_index, chunk_id
                 limit $3
                 """,
                 literal,
@@ -93,4 +98,4 @@ async def retrieve_chunks(
         )
         for row in rows
     ]
-    return sorted(results, key=lambda result: result.similarity, reverse=True)
+    return results

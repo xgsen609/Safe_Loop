@@ -35,6 +35,7 @@ export NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8000
 export SITE_TIMEZONE=Asia/Singapore
 
 backend/.venv/bin/python scripts/apply_demo_seed.py
+(cd backend && .venv/bin/python -m app.rag.backfill)
 backend/.venv/bin/python -m uvicorn app.main:app \
   --app-dir backend --host 127.0.0.1 --port 8000 &
 backend_pid=$!

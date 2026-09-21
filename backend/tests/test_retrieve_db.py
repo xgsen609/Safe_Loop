@@ -172,6 +172,7 @@ def test_retrieval_is_ranked_approved_effective_and_fast() -> None:
         run(retrieve_chunks("开始工作前必须安装护栏"))
         started = perf_counter()
         mandarin_results = run(retrieve_chunks("开始工作前必须安装护栏"))
+        repeated_results = run(retrieve_chunks("开始工作前必须安装护栏"))
         elapsed = perf_counter() - started
         returned_ids = {result.document_id for result in mandarin_results}
 
@@ -179,6 +180,7 @@ def test_retrieval_is_ranked_approved_effective_and_fast() -> None:
         assert unapproved["id"] not in returned_ids
         assert future_document["id"] not in returned_ids
         assert all(result.similarity >= 0.35 for result in mandarin_results)
+        assert repeated_results == mandarin_results
         assert mandarin_results == sorted(
             mandarin_results,
             key=lambda result: result.similarity,

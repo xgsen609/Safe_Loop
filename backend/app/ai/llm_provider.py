@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from hashlib import sha256
+import json
 import logging
 import random
 import time
@@ -33,6 +34,7 @@ PROVIDER_NAME: Final = "vertex-gemini"
 REQUEST_TIMEOUT_SECONDS: Final = 30.0
 MAX_RETRIES: Final = 2
 RETRY_BASE_SECONDS: Final = 0.25
+MAX_DETERMINISTIC_SEED: Final = 2**31 - 1
 
 _ResultT = TypeVar("_ResultT")
 _Sleep = Callable[[float], Awaitable[None]]
@@ -50,6 +52,27 @@ class ProviderResponseError(ValueError):
 
 class CircuitOpenError(ProviderUnavailableError):
     """Reject calls while an unhealthy provider is cooling down."""
+
+
+def _completion_seed(
+    prompt_name: str,
+    rendered_prompt: str,
+    schema: type[BaseModel],
+) -> int:
+    """Derive a stable Vertex seed from the complete structured request."""
+    canonical = json.dumps(
+        {
+            "prompt_name": prompt_name,
+            "prompt": rendered_prompt,
+            "schema": schema.model_json_schema(),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return int.from_bytes(sha256(canonical.encode()).digest()[:4], "big") % (
+        MAX_DETERMINISTIC_SEED + 1
+    )
 
 
 class _Usage(Protocol):
@@ -302,6 +325,11 @@ class LLMProvider:
         schema: type[BaseModel],
     ) -> ProviderResult:
         rendered_prompt = render_prompt(prompt_name, variables)
+        deterministic_seed = _completion_seed(
+            prompt_name,
+            rendered_prompt,
+            schema,
+        )
         started = self._clock()
 
         async def generate() -> tuple[
@@ -314,6 +342,8 @@ class LLMProvider:
                 contents=rendered_prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.0,
+                    candidate_count=1,
+                    seed=deterministic_seed,
                     max_output_tokens=self.config.max_output_tokens,
                     response_mime_type="application/json",
                     response_schema=schema,
