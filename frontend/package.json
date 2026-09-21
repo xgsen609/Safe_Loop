@@ -21,7 +21,7 @@
     "@supabase/ssr": "0.12.4",
     "@supabase/supabase-js": "2.112.3",
     "@heroicons/react": "2.2.0",
-    "next": "15.5.21",
+    "next": "15.5.25",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "next-intl": "4.13.7",
@@ -40,7 +40,7 @@
     "tailwindcss": "3.4.17",
     "typescript": "5.7.2",
     "eslint": "8.57.1",
-    "eslint-config-next": "15.5.21",
+    "eslint-config-next": "15.5.25",
     "eslint-plugin-react": "7.37.3",
     "@testing-library/react": "16.1.0",
     "@testing-library/user-event": "14.5.2",
@@ -48,7 +48,8 @@
     "vitest": "4.1.11"
   },
   "overrides": {
+    "js-yaml": "4.3.2",
     "postcss": "8.5.23",
-    "sharp": "0.35.3"
+    "sharp": "0.35.4"
   }
 }

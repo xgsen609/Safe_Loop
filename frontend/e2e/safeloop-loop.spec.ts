@@ -240,8 +240,8 @@ test.describe.serial("SafeLoop end-to-end contract", () => {
             ? "The approved action must state the exact control and test."
             : "批准的行动必须写明具体防护措施和测试。" );
         await reviewerPage
-          .getByLabel(copy(locale, "review.detail.assigneeId"))
-          .fill(runtime.users.responsible.id);
+          .getByLabel(copy(locale, "review.detail.assignee"))
+          .selectOption(runtime.users.responsible.id);
         await reviewerPage
           .getByLabel(copy(locale, "review.detail.dueAt"))
           .fill(futureDateTimeInput(3));

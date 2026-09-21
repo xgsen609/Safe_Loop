@@ -704,7 +704,7 @@ def _result_quiz(
 async def summarise_case(state: LessonState) -> dict[str, object]:
     """Summarise only fields admitted by the verified closure snapshot."""
     sources = _case_sources(state["verified_case"])
-    variables = {"case_sources": sources}
+    variables: dict[str, object] = {"case_sources": sources}
     try:
         result = await get_provider().complete(
             "summarise_case",

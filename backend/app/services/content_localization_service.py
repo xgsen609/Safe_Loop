@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 import re
-from typing import cast
 
 
 PathPart = str | int
@@ -147,7 +146,7 @@ def _append_string_list_paths(
 
 async def localize_report_zh(report: dict[str, object]) -> dict[str, object]:
     """Return a Chinese presentation copy of all human-readable report fields."""
-    localized = cast(dict[str, object], deepcopy(report))
+    localized = deepcopy(report)
     paths: list[ContentPath] = []
     texts: list[str] = []
     for field in (
@@ -216,7 +215,7 @@ async def localize_report_items_zh(
     items: list[dict[str, object]],
 ) -> list[dict[str, object]]:
     """Translate summary fields for a reviewer or reporter queue in one batch."""
-    localized = cast(list[dict[str, object]], deepcopy(items))
+    localized = deepcopy(items)
     paths: list[ContentPath] = []
     texts: list[str] = []
     for index in range(len(localized)):
