@@ -117,6 +117,19 @@ async function reloadUntilSelector(
     .toBeGreaterThan(0);
 }
 
+async function gotoWithRetry(page: Page, url: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      return;
+    } catch (error) {
+      const aborted = error instanceof Error && error.message.includes("ERR_ABORTED");
+      if (!aborted || attempt === 2) throw error;
+      await page.waitForTimeout(500);
+    }
+  }
+}
+
 async function openRolePages(browser: Browser, locale: E2ELocale) {
   const runtime = readRuntime();
   const reporterContext = await newLocalContext(browser);
@@ -367,7 +380,7 @@ test.describe.serial("SafeLoop end-to-end contract", () => {
           reviewerPage.getByText(copy(locale, "verification.submit.successTitle"), { exact: true }),
         ).toBeVisible();
 
-        await reviewerPage.goto(`/${locale}/briefings`);
+        await gotoWithRetry(reviewerPage, `/${locale}/briefings`);
         await reloadUntilSelector(
           reviewerPage,
           `[data-report-id="${reportId}"]`,
