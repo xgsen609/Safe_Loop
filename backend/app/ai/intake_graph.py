@@ -131,6 +131,24 @@ def _answered_gaps(variables: dict[str, object]) -> set[str]:
     return answered
 
 
+def _normalise_gap(value: str) -> str:
+    """Make provider-authored gap labels stable enough for exact reconciliation."""
+    return " ".join(re.findall(r"[a-z0-9]+", value.casefold()))
+
+
+def _remove_answered_gaps(
+    gaps: list[str],
+    prior_answers: list[PriorAnswer],
+) -> list[str]:
+    """Never ask for a durable clarification that the reporter already answered."""
+    answered = {
+        _normalise_gap(answer["gap"])
+        for answer in prior_answers
+        if answer["answer"].strip()
+    }
+    return [gap for gap in gaps if _normalise_gap(gap) not in answered]
+
+
 _TRANSLATION_REPLACEMENTS = (
     ("六楼", "Level 6 "),
     ("七楼", "Level 7 "),
@@ -673,10 +691,11 @@ async def assess_completeness(state: IntakeState) -> dict[str, object]:
         },
         schema=CompletenessResult,
     )
+    gaps = _result_strings(result.data, "missing_information")
     return {
-        "missing_information": _result_strings(
-            result.data,
-            "missing_information",
+        "missing_information": _remove_answered_gaps(
+            gaps,
+            state["prior_answers"],
         )
     }
 

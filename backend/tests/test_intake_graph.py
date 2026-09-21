@@ -11,7 +11,13 @@ from typing import Literal, cast
 import pytest
 
 from app.ai import intake_graph as intake_module
-from app.ai.intake_graph import IntakeState, compose_questions, intake_graph, translate
+from app.ai.intake_graph import (
+    IntakeState,
+    assess_completeness,
+    compose_questions,
+    intake_graph,
+    translate,
+)
 from app.ai.provider import ProviderResult
 from app.ai.validator import validate_draft
 from app.domain.enums import ValidationStatus
@@ -218,6 +224,42 @@ def test_two_prior_answers_exhaust_the_total_question_budget() -> None:
 
     assert result["questions"] == []
     assert result["missing_information"] == ["activity"]
+
+
+def test_answered_gap_is_removed_even_when_provider_returns_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RepeatingProvider:
+        async def complete(self, *_: object, **__: object) -> ProviderResult:
+            return ProviderResult(
+                data={
+                    "missing_information": [
+                        "Estimated fall height",
+                        "Availability of a safety harness",
+                    ]
+                },
+                raw="{}",
+                provider="test",
+                provider_ref="test-ref",
+                latency_ms=1,
+                tokens_in=1,
+                tokens_out=1,
+                cost_usd=0.0,
+            )
+
+    input_state = state("The Level 6 edge has no guardrail.")
+    input_state["prior_answers"] = [
+        {
+            "gap": "Estimated fall height.",
+            "question": "What is the estimated fall height?",
+            "answer": "Approximately 1.8 metres.",
+        }
+    ]
+    monkeypatch.setattr(intake_module, "get_provider", lambda: RepeatingProvider())
+
+    update = asyncio.run(assess_completeness(input_state))
+
+    assert update["missing_information"] == ["Availability of a safety harness"]
 
 
 def test_inference_is_an_assumption_and_never_an_observed_fact() -> None:

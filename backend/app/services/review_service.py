@@ -129,6 +129,22 @@ async def review_report(
                 if action is not None and action != before_action:
                     corrections["action"] = {"before": before_action, "after": action}
 
+                # The queue is ordered and filtered by reports.urgency. Once a
+                # reviewer commits a decision, make its accepted urgency the
+                # report's durable urgency instead of leaving the submission
+                # default visible downstream.
+                accepted_urgency = urgency_value or before_urgency
+                if accepted_urgency is not None:
+                    await conn.execute(
+                        """
+                        update reports
+                        set urgency = $2::urgency
+                        where id = $1
+                        """,
+                        report_id,
+                        accepted_urgency,
+                    )
+
                 review = await conn.fetchrow(
                     """
                     insert into review_decisions (

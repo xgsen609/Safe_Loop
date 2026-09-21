@@ -74,6 +74,34 @@ async def move_to_review(report_id: UUID) -> None:
     await transition_report(report_id, ReportStatus.UNDER_REVIEW, Actor.system())
 
 
+async def add_ai_draft(
+    report_id: UUID,
+    *,
+    urgency: str = "high",
+    action: str = "Install secured guardrails before work resumes.",
+) -> None:
+    async with connection() as conn:
+        await conn.execute(
+            """
+            insert into ai_drafts (
+              report_id, version, provider, provider_ref, raw_json,
+              observed_facts, assumptions, missing_information,
+              proposed_category, proposed_urgency, suggested_owner_role,
+              suggested_action, confidence, citations, validation
+            )
+            values (
+              $1, 1, 'test', 'test-ref', '{}'::jsonb,
+              '["Missing guardrail"]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+              'work_at_height', $2::urgency, 'responsible'::role,
+              $3, 0.9, '[]'::jsonb, 'valid'::validation_status
+            )
+            """,
+            report_id,
+            urgency,
+            action,
+        )
+
+
 async def review_state(report_id: UUID) -> tuple[str, int, int, int, int]:
     async with connection() as conn:
         row = await conn.fetchrow(
@@ -234,6 +262,36 @@ def test_approval_creates_assignment_action_decision_and_transition() -> None:
                 return row["kind"], row["recipient_id"]
 
         assert run(read_notification()) == ("assigned", RESPONSIBLE_ID)
+    finally:
+        run(cleanup(report_id))
+
+
+def test_review_accepts_ai_urgency_into_the_report_queue() -> None:
+    report_id = run(make_report())
+    try:
+        run(move_to_review(report_id))
+        run(add_ai_draft(report_id, urgency="high"))
+        run(
+            review_report(
+                report_id,
+                Actor(ActorType.HUMAN, REVIEWER_ID, Role.REVIEWER),
+                decision=ReviewDecision.APPROVE,
+                target=ReportStatus.ACTION_ASSIGNED,
+                assignee_id=RESPONSIBLE_ID,
+                due_at=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        )
+
+        async def read_urgency() -> str:
+            async with connection() as conn:
+                value = await conn.fetchval(
+                    "select urgency::text from reports where id = $1",
+                    report_id,
+                )
+                assert isinstance(value, str)
+                return value
+
+        assert run(read_urgency()) == "high"
     finally:
         run(cleanup(report_id))
 
